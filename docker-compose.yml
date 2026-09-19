@@ -1,9 +1,6 @@
 services:
   aimili-vpngate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: aimili-vpngate-bun:latest
+    image: ghcr.io/seiry/aimili-vpngate-bun:latest
     container_name: aimili-vpngate-bun
     restart: unless-stopped
     cap_add:
