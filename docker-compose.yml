@@ -13,8 +13,8 @@ services:
       - 8.8.8.8
     devices:
       - /dev/net/tun:/dev/net/tun
-      - "${UI_PORT:-8787}:8787"
-      - "${PROXY_PORT:-1080}:1080"
+    ports:
+      - '${PROXY_TARGET:-127.0.0.1:1080}:1080'
     environment:
       - UI_HOST=0.0.0.0
       - UI_PORT=8787
@@ -25,6 +25,7 @@ services:
       - SSL_VPN_ONLY=${SSL_VPN_ONLY:-true}
       - AUTO_CONNECT=${AUTO_CONNECT:-false}
       - PREFERRED_COUNTRY=${PREFERRED_COUNTRY:-JP}
+      - PROXY_TARGET=${PROXY_TARGET:-127.0.0.1:1080}
     volumes:
       - vpngate-data:/data
 
