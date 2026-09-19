@@ -81,4 +81,5 @@ export interface AppConfig {
   autoReconnect?: boolean;
   preferredCountry: string;
   sslVpnOnly: boolean;
+  appVersion: string;
 }

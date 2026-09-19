@@ -28,8 +28,12 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 COPY src ./src
 COPY public ./public
 
+# Build argument for image version
+ARG IMAGE_VERSION=dev
+
 # Default environment configuration
 ENV NODE_ENV=production \
+    APP_VERSION=${IMAGE_VERSION} \
     VPNGATE_DATA_DIR=/data \
     UI_HOST=0.0.0.0 \
     UI_PORT=8787 \

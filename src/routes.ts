@@ -72,6 +72,7 @@ app.get("/api/status", (c) => {
     proxy: proxyStats,
     sync: syncStatus,
     config: {
+      version: config.appVersion,
       uiPort: config.uiPort,
       proxyPort: config.proxyPort,
       proxyHost: config.proxyHost,

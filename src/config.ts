@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import pkg from "../package.json";
 import type { AppConfig } from "./types.ts";
 
 function getEnv(key: string, defaultValue: string): string {
@@ -122,4 +123,10 @@ export const config: AppConfig = {
   autoReconnect: getEnvBool("AUTO_RECONNECT", true),
   preferredCountry: resolveCountryCode(process.env.PREFERRED_COUNTRY || "JP"),
   sslVpnOnly: getEnvBool("SSL_VPN_ONLY", false),
+  appVersion:
+    process.env.APP_VERSION ||
+    process.env.IMAGE_VERSION ||
+    process.env.DOCKER_IMAGE_VERSION ||
+    pkg.version ||
+    "1.0.0",
 };

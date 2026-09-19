@@ -6,8 +6,10 @@ import { refreshNodes } from "./fetcher.ts";
 import { getAllNodes, getNodeById, getLastConnectedInfo } from "./db.ts";
 
 console.log("=================================================");
-console.log("   AimiliVPN Gate (Bun) - SSL-VPN to SOCKS5 Gateway");
+console.log(`   AimiliVPN Gate (Bun) - SSL-VPN to SOCKS5 Gateway`);
+console.log(`   Image Version : ${config.appVersion}`);
 console.log("=================================================");
+console.log(`[System] Running Image Version: ${config.appVersion}`);
 console.log(`[Config] Web Dashboard: http://${config.uiHost}:${config.uiPort}`);
 console.log(`[Config] SOCKS5 Proxy : socks5://${config.proxyHost}:${config.proxyPort}`);
 console.log(`[Config] Data Dir     : ${config.dataDir}`);

@@ -97,6 +97,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            IMAGE_VERSION=${{ steps.time_tag.outputs.tag }}
           cache-from: type=gha,scope=aimili-multiarch
           cache-to: type=gha,mode=max,scope=aimili-multiarch
 
