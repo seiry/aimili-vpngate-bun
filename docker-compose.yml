@@ -14,10 +14,13 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     ports:
-      - '${PROXY_TARGET:-127.0.0.1:1080}:1080'
+      - "${PROXY_TARGET:-127.0.0.1:1080}:1080"
     environment:
+      - SERVICE_FQDN_DASHBOARD_8787
       - UI_HOST=0.0.0.0
       - UI_PORT=8787
+      - UI_USER=${UI_USER:-admin}
+      - UI_PASS=${UI_PASS:-}
       - PROXY_HOST=0.0.0.0
       - PROXY_PORT=1080
       - PROXY_USER=${PROXY_USER:-}

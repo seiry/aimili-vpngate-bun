@@ -11,6 +11,9 @@ console.log("=================================================");
 console.log(`[Config] Web Dashboard: http://${config.uiHost}:${config.uiPort}`);
 console.log(`[Config] SOCKS5 Proxy : socks5://${config.proxyHost}:${config.proxyPort}`);
 console.log(`[Config] Data Dir     : ${config.dataDir}`);
+if (config.uiAuthEnabled) {
+  console.log(`[Config] Web UI Auth  : Enabled (User: "${config.uiUser}", Pass: "${config.uiPass}")`);
+}
 if (config.proxyUser && config.proxyPass) {
   console.log(`[Config] Proxy Auth   : Enabled (${config.proxyUser}:***)`);
 }

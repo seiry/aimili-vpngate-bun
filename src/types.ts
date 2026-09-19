@@ -61,7 +61,9 @@ export interface ProxyStats {
 export interface AppConfig {
   uiHost: string;
   uiPort: number;
-  proxyHost: string;
+  uiUser?: string;
+  uiPass?: string;
+  uiAuthEnabled?: boolean;
   proxyPort: number;
   proxyUser?: string;
   proxyPass?: string;

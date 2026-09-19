@@ -33,11 +33,37 @@ export async function handleRequest(req: Request): Promise<Response> {
     });
   }
 
-  // Health check for Coolify & Docker
+  // Health check for Coolify & Docker (exempt from auth so healthcheck passes)
   if (pathname === "/api/health") {
     return json({ status: "ok", timestamp: Date.now() });
   }
 
+  // Enforce HTTP Basic Auth for all management pages and APIs
+  if (config.uiAuthEnabled) {
+    const authHeader = req.headers.get("authorization");
+    let authorized = false;
+    if (authHeader && authHeader.toLowerCase().startsWith("basic ")) {
+      try {
+        const decoded = Buffer.from(authHeader.substring(6).trim(), "base64").toString("utf-8");
+        const [u, p] = decoded.split(":");
+        if (u === config.uiUser && p === config.uiPass) {
+          authorized = true;
+        }
+      } catch {
+        authorized = false;
+      }
+    }
+
+    if (!authorized) {
+      return new Response("401 Unauthorized: AimiliVPN Gate requires authentication.", {
+        status: 401,
+        headers: {
+          "WWW-Authenticate": 'Basic realm="AimiliVPN Gate"',
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      });
+    }
+  }
   // Current VPN & Proxy status
   if (pathname === "/api/status" && req.method === "GET") {
     const vpnStatus = vpnManager.getStatus();

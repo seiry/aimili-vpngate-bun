@@ -31,9 +31,36 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
+const authFile = path.join(dataDir, "ui_auth.json");
+let uiUser = process.env.UI_USER || process.env.UI_USERNAME || process.env.ADMIN_USER || "admin";
+let uiPass = process.env.UI_PASS || process.env.UI_PASSWORD || process.env.ADMIN_PASS;
+
+if (!uiPass) {
+  if (fs.existsSync(authFile)) {
+    try {
+      const saved = JSON.parse(fs.readFileSync(authFile, "utf-8")) as { username?: string; password?: string };
+      if (saved.username) uiUser = saved.username;
+      if (saved.password) uiPass = saved.password;
+    } catch {
+      // ignore parse error
+    }
+  }
+  if (!uiPass) {
+    uiPass = crypto.randomUUID().replace(/-/g, "").substring(0, 10);
+    try {
+      fs.writeFileSync(authFile, JSON.stringify({ username: uiUser, password: uiPass }, null, 2), { mode: 0o600 });
+    } catch {
+      // ignore write error
+    }
+  }
+}
+
 export const config: AppConfig = {
   uiHost: getEnv("UI_HOST", "0.0.0.0"),
   uiPort: getEnvInt("UI_PORT", 8787),
+  uiUser,
+  uiPass,
+  uiAuthEnabled: Boolean(uiUser && uiPass),
   proxyHost: getEnv("LOCAL_PROXY_HOST", getEnv("PROXY_HOST", "0.0.0.0")),
   proxyPort: getEnvInt("LOCAL_PROXY_PORT", getEnvInt("PROXY_PORT", 1080)),
   proxyUser: process.env.LOCAL_PROXY_USER || process.env.PROXY_USER,
@@ -45,7 +72,7 @@ export const config: AppConfig = {
   refreshIntervalMinutes: getEnvInt("REFRESH_INTERVAL_MINUTES", 60),
   autoConnect: getEnvBool("AUTO_CONNECT", false),
   preferredCountry: getEnv("PREFERRED_COUNTRY", "JP"),
-  sslVpnOnly: getEnvBool("SSL_VPN_ONLY", false), // Can filter in UI, defaults to showing all with SSL highlighted
+  sslVpnOnly: getEnvBool("SSL_VPN_ONLY", false),
 };
 
 export const COUNTRY_NAMES: Record<string, string> = {

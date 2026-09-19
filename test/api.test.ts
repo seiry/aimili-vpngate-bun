@@ -1,5 +1,6 @@
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { handleRequest } from "../src/routes.ts";
+import { config } from "../src/config.ts";
 import { getAllNodes, saveNodes } from "../src/db.ts";
 
 beforeAll(() => {
@@ -41,8 +42,19 @@ test("GET /api/health returns 200 and status ok", async () => {
   expect(body.status).toBe("ok");
 });
 
-test("GET /api/status returns vpn and proxy stats", async () => {
-  const req = new Request("http://localhost:8787/api/status");
+const authHeader = `Basic ${Buffer.from(`${config.uiUser}:${config.uiPass}`).toString("base64")}`;
+
+test("GET / without auth returns 401 Unauthorized", async () => {
+  const req = new Request("http://localhost:8787/");
+  const res = await handleRequest(req);
+  expect(res.status).toBe(401);
+  expect(res.headers.get("www-authenticate")).toContain("Basic");
+});
+
+test("GET /api/status with auth returns vpn and proxy stats", async () => {
+  const req = new Request("http://localhost:8787/api/status", {
+    headers: { Authorization: authHeader },
+  });
   const res = await handleRequest(req);
   expect(res.status).toBe(200);
   const body = (await res.json()) as { vpn: { state: string }; proxy: { port: number } };
@@ -50,8 +62,10 @@ test("GET /api/status returns vpn and proxy stats", async () => {
   expect(body.proxy).toBeDefined();
 });
 
-test("GET /api/nodes returns seeded SSL-VPN nodes", async () => {
-  const req = new Request("http://localhost:8787/api/nodes?ssl_only=true");
+test("GET /api/nodes with auth returns seeded SSL-VPN nodes", async () => {
+  const req = new Request("http://localhost:8787/api/nodes?ssl_only=true", {
+    headers: { Authorization: authHeader },
+  });
   const res = await handleRequest(req);
   expect(res.status).toBe(200);
   const body = (await res.json()) as { total: number; nodes: Array<{ ip: string; hasSslVpn: boolean }> };
@@ -60,8 +74,10 @@ test("GET /api/nodes returns seeded SSL-VPN nodes", async () => {
   expect(body.nodes[0].hasSslVpn).toBe(true);
 });
 
-test("GET /api/export returns valid SOCKS5 export URLs", async () => {
-  const req = new Request("http://localhost:8787/api/export");
+test("GET /api/export with auth returns valid SOCKS5 export URLs", async () => {
+  const req = new Request("http://localhost:8787/api/export", {
+    headers: { Authorization: authHeader },
+  });
   const res = await handleRequest(req);
   expect(res.status).toBe(200);
   const body = (await res.json()) as { socks5Url: string; curlSocks: string };
@@ -69,8 +85,10 @@ test("GET /api/export returns valid SOCKS5 export URLs", async () => {
   expect(body.curlSocks).toContain("curl --proxy");
 });
 
-test("GET / serves the SPA index.html", async () => {
-  const req = new Request("http://localhost:8787/");
+test("GET / with auth serves the SPA index.html", async () => {
+  const req = new Request("http://localhost:8787/", {
+    headers: { Authorization: authHeader },
+  });
   const res = await handleRequest(req);
   expect(res.status).toBe(200);
   expect(res.headers.get("content-type")).toContain("text/html");

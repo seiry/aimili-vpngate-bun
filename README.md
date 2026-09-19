@@ -107,7 +107,8 @@ print('当前出口 IP:', response.text)
 |---|---|---|
 | `UI_HOST` | `0.0.0.0` | Web 后台监听地址 |
 | `UI_PORT` | `8787` | Web 后台端口 |
-| `PROXY_HOST` | `0.0.0.0` | SOCKS5 / HTTP 代理监听地址 |
+| `UI_USER` | `admin` | Web 后台 HTTP 基本认证账号 |
+| `UI_PASS` | `随机生成` | Web 后台 HTTP 基本认证密码（首次启动自动生成保存在 `/data/ui_auth.json`） |
 | `PROXY_PORT` | `1080` | SOCKS5 / HTTP 代理端口 |
 | `PROXY_USER` | `""` | 代理认证账号（留空为免密） |
 | `PROXY_PASS` | `""` | 代理认证密码（留空为免密） |
