@@ -44,10 +44,29 @@ if (cachedNodes.length === 0) {
 if (config.autoConnect) {
   setTimeout(async () => {
     const nodes = getAllNodes(true);
-    if (nodes.length > 0) {
-      console.log(`[AutoConnect] Connecting to top node: ${nodes[0].countryZh} (${nodes[0].ip})`);
-      await vpnManager.connect(nodes[0]);
+    if (nodes.length === 0) return;
+
+    const pref = config.preferredCountry ? config.preferredCountry.toUpperCase() : "";
+    let target: VpnNode = nodes[0];
+
+    if (pref) {
+      const prefResidential = nodes.filter(
+        (n) => n.ipType === "residential" && (n.countryShort.toUpperCase() === pref || n.countryZh === pref)
+      );
+      if (prefResidential.length > 0) {
+        target = prefResidential[0];
+      } else {
+        const prefAny = nodes.filter(
+          (n) => n.countryShort.toUpperCase() === pref || n.countryZh === pref
+        );
+        if (prefAny.length > 0) {
+          target = prefAny[0];
+        }
+      }
     }
+
+    console.log(`[AutoConnect] Connecting to preferred node: ${target.countryZh} (${target.ip})`);
+    await vpnManager.connect(target);
   }, 3000);
 }
 

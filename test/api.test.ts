@@ -96,3 +96,47 @@ test("GET / with auth serves the SPA index.html", async () => {
   expect(text).toContain("AimiliVPN Gate (Bun)");
   expect(text).toContain("SSL-VPN");
 });
+test("POST /api/smart-connect prioritizes preferredCountry (KR)", async () => {
+  // Seed a Korean node alongside the Japanese node
+  saveNodes([
+    {
+      id: "KR_220.120.133.103_443_tcp",
+      hostName: "vpn-korea.opengw.net",
+      ip: "220.120.133.103",
+      score: 100000,
+      ping: 45,
+      speed: 100000000,
+      speedFormatted: "100 Mbps",
+      countryLong: "Korea Republic of",
+      countryShort: "KR",
+      countryZh: "韩国",
+      numVpnSessions: 50,
+      uptime: 80000,
+      totalUsers: 10000,
+      totalTraffic: 500000,
+      operator: "Korea Telecom",
+      message: "Test",
+      hasSslVpn: true,
+      sslVpnPort: 443,
+      sslVpnProto: "tcp",
+      openVpnProto: "tcp",
+      openVpnPort: 443,
+      latencyMs: null,
+      lastUpdated: Date.now(),
+      ipType: "residential",
+      ipTypeZh: "家庭宽带",
+    },
+  ]);
+
+  config.preferredCountry = "KR";
+  const req = new Request("http://localhost:8787/api/smart-connect", {
+    method: "POST",
+    headers: { Authorization: authHeader },
+  });
+  const res = await handleRequest(req);
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { success: boolean; node: { countryShort: string; ip: string } };
+  expect(body.success).toBe(true);
+  expect(body.node.countryShort).toBe("KR");
+  expect(body.node.ip).toBe("220.120.133.103");
+});

@@ -59,27 +59,6 @@ const rawProxyUser = process.env.LOCAL_PROXY_USER ?? process.env.PROXY_USER ?? "
 const rawProxyPass = process.env.LOCAL_PROXY_PASS ?? process.env.PROXY_PASS ?? "";
 const proxyUser = rawProxyUser.trim().length > 0 ? rawProxyUser.trim() : undefined;
 const proxyPass = rawProxyPass.trim().length > 0 ? rawProxyPass.trim() : undefined;
-
-export const config: AppConfig = {
-  uiHost: getEnv("UI_HOST", "0.0.0.0"),
-  uiPort: getEnvInt("UI_PORT", 8787),
-  uiUser,
-  uiPass,
-  uiAuthEnabled: Boolean(uiUser && uiPass),
-  proxyHost: getEnv("LOCAL_PROXY_HOST", getEnv("PROXY_HOST", "0.0.0.0")),
-  proxyPort: getEnvInt("LOCAL_PROXY_PORT", getEnvInt("PROXY_PORT", 1080)),
-  proxyUser,
-  proxyPass,
-  dataDir,
-  vpngateHtmlUrl: getEnv("VPNGATE_HTML_URL", "https://www.vpngate.net/cn/"),
-  vpngateApiUrl: getEnv("VPNGATE_API_URL", "https://www.vpngate.net/api/iphone/"),
-  mirrorUrl: getEnv("VPNGATE_MIRROR_URL", "https://baoweise-bot.github.io/aimili-vpngate/vpngate.csv"),
-  refreshIntervalMinutes: getEnvInt("REFRESH_INTERVAL_MINUTES", 30),
-  autoConnect: getEnvBool("AUTO_CONNECT", false),
-  preferredCountry: getEnv("PREFERRED_COUNTRY", "JP"),
-  sslVpnOnly: getEnvBool("SSL_VPN_ONLY", false),
-};
-
 export const COUNTRY_NAMES: Record<string, string> = {
   JP: "日本",
   KR: "韩国",
@@ -111,4 +90,35 @@ export const COUNTRY_NAMES: Record<string, string> = {
   RO: "罗马尼亚",
   IT: "意大利",
   CH: "瑞士",
+};
+
+function resolveCountryCode(val: string): string {
+  const trimmed = val.trim();
+  if (!trimmed) return "JP";
+  const upper = trimmed.toUpperCase();
+  if (COUNTRY_NAMES[upper]) return upper;
+  for (const [code, zh] of Object.entries(COUNTRY_NAMES)) {
+    if (zh === trimmed || trimmed.includes(zh)) return code;
+  }
+  return upper;
+}
+
+export const config: AppConfig = {
+  uiHost: getEnv("UI_HOST", "0.0.0.0"),
+  uiPort: getEnvInt("UI_PORT", 8787),
+  uiUser,
+  uiPass,
+  uiAuthEnabled: Boolean(uiUser && uiPass),
+  proxyHost: getEnv("LOCAL_PROXY_HOST", getEnv("PROXY_HOST", "0.0.0.0")),
+  proxyPort: getEnvInt("LOCAL_PROXY_PORT", getEnvInt("PROXY_PORT", 1080)),
+  proxyUser,
+  proxyPass,
+  dataDir,
+  vpngateHtmlUrl: getEnv("VPNGATE_HTML_URL", "https://www.vpngate.net/cn/"),
+  vpngateApiUrl: getEnv("VPNGATE_API_URL", "https://www.vpngate.net/api/iphone/"),
+  mirrorUrl: getEnv("VPNGATE_MIRROR_URL", "https://baoweise-bot.github.io/aimili-vpngate/vpngate.csv"),
+  refreshIntervalMinutes: getEnvInt("REFRESH_INTERVAL_MINUTES", 30),
+  autoConnect: getEnvBool("AUTO_CONNECT", false),
+  preferredCountry: resolveCountryCode(process.env.PREFERRED_COUNTRY || "JP"),
+  sslVpnOnly: getEnvBool("SSL_VPN_ONLY", false),
 };

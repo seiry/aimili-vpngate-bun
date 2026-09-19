@@ -3,7 +3,7 @@ import { basicAuth } from "hono/basic-auth";
 import { cors } from "hono/cors";
 import path from "node:path";
 import fs from "node:fs";
-import { config } from "./config.ts";
+import { config, COUNTRY_NAMES } from "./config.ts";
 import { getAllNodes, getNodeById, updateNodeLatency } from "./db.ts";
 import { refreshNodes, testNodeLatency, getSyncStatus } from "./fetcher.ts";
 import { vpnManager } from "./vpn.ts";
@@ -67,6 +67,9 @@ app.get("/api/status", (c) => {
       proxyPort: config.proxyPort,
       proxyHost: config.proxyHost,
       authEnabled: Boolean(config.proxyUser && config.proxyPass),
+      preferredCountry: config.preferredCountry,
+      preferredCountryZh: COUNTRY_NAMES[config.preferredCountry] || config.preferredCountry,
+      autoConnect: config.autoConnect,
     },
   });
 });
@@ -185,18 +188,32 @@ app.post("/api/smart-connect", async (c) => {
     return c.json({ success: false, error: "No SSL-VPN nodes available." }, 400);
   }
 
-  // Prioritize residential nodes (家宽) first
-  const residentialNodes = nodes.filter((n) => n.ipType === "residential");
-  const candidates = residentialNodes.length > 0 ? residentialNodes : nodes;
+  const pref = config.preferredCountry ? config.preferredCountry.toUpperCase() : "";
+  let best: VpnNode | null = null;
 
-  let best = candidates[0];
-  for (const n of candidates.slice(0, 15)) {
-    if (config.preferredCountry && n.countryShort === config.preferredCountry) {
-      best = n;
-      break;
+  if (pref) {
+    // 1. First priority: residential SSL-VPN node in preferred country across ALL nodes
+    const prefResidential = nodes.filter(
+      (n) => n.ipType === "residential" && (n.countryShort.toUpperCase() === pref || n.countryZh === pref)
+    );
+    if (prefResidential.length > 0) {
+      best = prefResidential[0];
+    } else {
+      // 2. Second priority: any SSL-VPN node in preferred country across ALL nodes
+      const prefAny = nodes.filter(
+        (n) => n.countryShort.toUpperCase() === pref || n.countryZh === pref
+      );
+      if (prefAny.length > 0) {
+        best = prefAny[0];
+      }
     }
   }
 
+  // 3. Fallback: best residential node overall, then best overall
+  if (!best) {
+    const anyResidential = nodes.filter((n) => n.ipType === "residential");
+    best = anyResidential.length > 0 ? anyResidential[0] : nodes[0];
+  }
   vpnManager.connect(best);
   return c.json({
     success: true,

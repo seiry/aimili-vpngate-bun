@@ -3,8 +3,10 @@ FROM oven/bun:1-debian
 LABEL maintainer="AimiliVPN" \
       description="VPNGate SSL-VPN to SOCKS5 Gateway powered by Bun"
 
-# Install OpenVPN, routing utilities and ca-certificates
-RUN apt-get update \
+# Install OpenVPN, routing utilities and ca-certificates with BuildKit cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
@@ -17,9 +19,10 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Copy dependency files and install production dependencies
-COPY package.json tsconfig.json ./
-RUN bun install --production
+# Copy dependency files and install production dependencies with Bun cache
+COPY package.json tsconfig.json bun.lock* ./
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --production
 
 # Copy source code, frontend assets and bundled mirror
 COPY src ./src

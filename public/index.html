@@ -759,7 +759,7 @@
         <button class="btn btn-sm" onclick="copyProxyUrl()">复制地址</button>
       </div>
       <div>
-        <button class="btn btn-sm btn-success" onclick="smartConnect()">
+        <button class="btn btn-sm btn-success" id="smartConnectBtn" onclick="smartConnect()">
           ⚡ 智能连接最佳家宽 SSL-VPN
         </button>
       </div>
@@ -780,7 +780,7 @@
           <option value="ALL">全部类型 (家庭/机房)</option>
         </select>
 
-        <select id="countrySelect" onchange="applyFilters()">
+        <select id="countrySelect" onchange="userChangedCountry = true; applyFilters()">
           <option value="ALL">全部国家</option>
           <option value="JP">🇯🇵 日本</option>
           <option value="KR">🇰🇷 韩国</option>
@@ -878,6 +878,7 @@
   <script>
     let currentSslOnly = true;
     let currentIpType = "residential";
+    let userChangedCountry = false;
     let activeNodeId = null;
 
     async function fetchStatus() {
@@ -955,6 +956,34 @@
         const proxyPort = data.config?.proxyPort || 1080;
         document.getElementById("proxyUrl").textContent = `socks5://${host}:${proxyPort}`;
 
+        // Update Preferred Country selection if user has not manually changed country
+        if (data.config && data.config.preferredCountry && !userChangedCountry) {
+          const sel = document.getElementById("countrySelect");
+          if (sel && sel.value === "ALL") {
+            const pref = data.config.preferredCountry.toUpperCase();
+            let found = false;
+            for (let i = 0; i < sel.options.length; i++) {
+              if (sel.options[i].value === pref) {
+                sel.selectedIndex = i;
+                found = true;
+                break;
+              }
+            }
+            if (!found && pref) {
+              const opt = document.createElement("option");
+              opt.value = pref;
+              opt.textContent = `⭐ 首选国家 (${data.config.preferredCountryZh || pref})`;
+              sel.appendChild(opt);
+              sel.value = pref;
+            }
+            loadNodes();
+          }
+        }
+        // Update smart connect button text
+        const smartBtn = document.getElementById("smartConnectBtn");
+        if (smartBtn && data.config && data.config.preferredCountryZh) {
+          smartBtn.innerHTML = `⚡ 智能连接最佳${escapeHtml(data.config.preferredCountryZh)}家宽节点`;
+        }
         // Update logs
         if (vpn.logs && vpn.logs.length > 0) {
           const term = document.getElementById("logsTerminal");
