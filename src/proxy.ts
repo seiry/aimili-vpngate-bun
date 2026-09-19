@@ -67,7 +67,7 @@ export class ProxyServer {
   private handleIncoming(clientSocket: net.Socket): void {
     this.activeConnections++;
     this.totalConnections++;
-
+    clientSocket.setKeepAlive(true, 15000);
     let isClosed = false;
     const cleanup = () => {
       if (!isClosed) {
@@ -308,6 +308,8 @@ export class ProxyServer {
 
     targetSocket.once("connect", () => {
       targetSocket.setTimeout(0);
+      targetSocket.setKeepAlive(true, 15000);
+      clientSocket.setKeepAlive(true, 15000);
       if (onConnected) onConnected();
       if (initialData) targetSocket.write(initialData);
 

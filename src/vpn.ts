@@ -16,6 +16,10 @@ export class VpnManager {
   private egressIsp: string | null = null;
   private lastError: string | null = null;
   private isIntentionalDisconnect = false;
+  private isRecovering = false;
+  private hasEverConnected = false;
+  private healthCheckTimer: Timer | null = null;
+  private consecutiveHealthFailures = 0;
   private logBuffer: string[] = [];
   private maxLogEntries = 200;
 
@@ -110,19 +114,38 @@ export class VpnManager {
     const authPath = path.join(config.dataDir, "vpn_auth.txt");
     fs.writeFileSync(authPath, "vpn\nvpn\n", { mode: 0o600 });
 
-    // Ensure safe and container-friendly settings
+    // Ensure safe, resilient and container-friendly settings
     const modifiedLines = content.split(/\r?\n/).filter((line) => {
       const trimmed = line.trim();
       return (
         !trimmed.startsWith("redirect-gateway") &&
         !trimmed.startsWith("route-gateway") &&
-        !trimmed.startsWith("dhcp-option")
+        !trimmed.startsWith("dhcp-option") &&
+        !trimmed.startsWith("reneg-sec") &&
+        !trimmed.startsWith("keepalive") &&
+        !trimmed.startsWith("ping") &&
+        !trimmed.startsWith("ping-restart") &&
+        !trimmed.startsWith("ping-exit") &&
+        !trimmed.startsWith("inactive") &&
+        !trimmed.startsWith("connect-retry-max") &&
+        !trimmed.startsWith("connect-retry") &&
+        !trimmed.startsWith("auth-nocache")
       );
     });
 
     // In Docker with TUN capability, use standard redirect-gateway def1
     modifiedLines.push("redirect-gateway def1");
     modifiedLines.push("verb 3");
+    // Crucial: Disable 1-hour TLS key renegotiation (fixes SoftEther/OpenVPN 1h disconnect)
+    modifiedLines.push("reneg-sec 0");
+    // Send keepalive ping every 10s; trigger restart after 60s silence (maintains NAT table & detects dead peer)
+    modifiedLines.push("keepalive 10 60");
+    modifiedLines.push("ping-timer-rem");
+    modifiedLines.push("persist-tun");
+    modifiedLines.push("persist-key");
+    // Limit connect retries before exit so Bun supervisor can failover to a healthy node
+    modifiedLines.push("connect-retry-max 3");
+    modifiedLines.push("connect-retry 2 5");
 
     fs.writeFileSync(configPath, modifiedLines.join("\n"), { mode: 0o600 });
     return configPath;
@@ -164,6 +187,7 @@ export class VpnManager {
 
     this.state = "connecting";
     this.isIntentionalDisconnect = false;
+    this.hasEverConnected = false;
     this.activeNode = node;
     this.lastError = null;
     this.egressIp = null;
@@ -199,7 +223,6 @@ export class VpnManager {
           "openvpn",
           "--config", configPath,
           "--auth-user-pass", authPath,
-          "--auth-nocache",
           "--data-ciphers-fallback", "AES-128-CBC",
         ],
         stdout: "pipe",
@@ -226,15 +249,17 @@ export class VpnManager {
 
             if (line.includes("Initialization Sequence Completed")) {
               clearTimeout(timeoutTimer);
+              this.hasEverConnected = true;
               this.state = "connected";
               this.connectedAt = Date.now();
               saveLastConnected(node);
               this.addLog("VPN connection successfully established!");
+              this.startHealthCheck();
               this.refreshEgressInfo();
               finish({ success: true });
             }
 
-            if (line.includes("SIGTERM") || line.includes("AUTH_FAILED") || line.includes("fatal error")) {
+            if (!this.hasEverConnected && (line.includes("SIGTERM") || line.includes("AUTH_FAILED") || line.includes("fatal error"))) {
               clearTimeout(timeoutTimer);
               this.lastError = line;
               this.state = "error";
@@ -259,23 +284,32 @@ export class VpnManager {
 
       this.process.exited.then((code) => {
         this.addLog(`OpenVPN process exited with code ${code}`);
-        const wasConnected = this.state === "connected";
+        this.stopHealthCheck();
+        const wasConnected = this.hasEverConnected;
         const previousNode = this.activeNode;
+        this.process = null;
+
         if (this.state === "connecting" || this.state === "connected") {
-          this.state = code === 0 ? "disconnected" : "error";
-          this.lastError = `Process exited with code ${code}`;
-          finish({ success: false, error: this.lastError });
+          this.state = this.isIntentionalDisconnect ? "disconnected" : (code === 0 ? "disconnected" : "error");
+          this.lastError = this.isIntentionalDisconnect ? null : `Process exited with code ${code}`;
+          finish({ success: false, error: this.lastError ?? undefined });
         }
 
-        if (wasConnected && !this.isIntentionalDisconnect && previousNode) {
+        if (wasConnected && !this.isIntentionalDisconnect && previousNode && !this.isRecovering) {
+          this.isRecovering = true;
           this.addLog("[Watchdog] Connection dropped unexpectedly. Attempting automatic recovery in 5s...");
           setTimeout(async () => {
-            if (this.state === "disconnected" || this.state === "error") {
-              const res = await this.connect(previousNode);
-              if (!res.success) {
-                this.addLog(`[Watchdog] Reconnecting to ${previousNode.ip} failed. Attempting failover...`);
-                await this.reconnectFailover(previousNode.countryShort);
+            try {
+              if (this.state === "disconnected" || this.state === "error") {
+                this.addLog(`[Watchdog] Retrying node: ${previousNode.countryZh} (${previousNode.ip})...`);
+                const res = await this.connect(previousNode);
+                if (!res.success) {
+                  this.addLog(`[Watchdog] Reconnecting to ${previousNode.ip} failed. Attempting failover in ${previousNode.countryShort}...`);
+                  await this.reconnectFailover(previousNode.countryShort, previousNode.ip);
+                }
               }
+            } finally {
+              this.isRecovering = false;
             }
           }, 5000);
         }
@@ -295,6 +329,8 @@ export class VpnManager {
    */
   async disconnect(intentional = true): Promise<void> {
     this.isIntentionalDisconnect = intentional;
+    this.stopHealthCheck();
+    this.hasEverConnected = false;
     if (intentional) {
       clearLastConnected();
     }
@@ -336,8 +372,9 @@ export class VpnManager {
   /**
    * Automatic failover: finds the next best SSL-VPN node in the target country
    */
-  async reconnectFailover(country?: string): Promise<boolean> {
-    const nodes = getAllNodes(true);
+  async reconnectFailover(country?: string, excludeIp?: string): Promise<boolean> {
+    const allNodes = getAllNodes(true);
+    const nodes = excludeIp ? allNodes.filter((n) => n.ip !== excludeIp) : allNodes;
     if (nodes.length === 0) return false;
 
     const pref = country ? country.toUpperCase() : "";
@@ -367,6 +404,67 @@ export class VpnManager {
       return res.success;
     }
     return false;
+  }
+
+  private startHealthCheck(): void {
+    this.stopHealthCheck();
+    this.consecutiveHealthFailures = 0;
+
+    this.healthCheckTimer = setInterval(async () => {
+      if (this.state !== "connected" || !this.process) {
+        this.stopHealthCheck();
+        return;
+      }
+
+      const isAlive = await this.checkTunnelConnectivity();
+      if (isAlive) {
+        this.consecutiveHealthFailures = 0;
+      } else {
+        this.consecutiveHealthFailures++;
+        this.addLog(`[Watchdog] Tunnel traffic check failed (${this.consecutiveHealthFailures}/2).`);
+
+        if (this.consecutiveHealthFailures >= 2 && !this.isRecovering) {
+          this.isRecovering = true;
+          const failedNode = this.activeNode;
+          this.addLog("[Watchdog] VPN tunnel traffic stalled (unable to reach Internet). Restarting session...");
+          this.stopHealthCheck();
+          try {
+            await this.disconnect(false);
+            if (failedNode) {
+              await this.reconnectFailover(failedNode.countryShort, failedNode.ip);
+            }
+          } finally {
+            this.isRecovering = false;
+          }
+        }
+      }
+    }, 45000);
+  }
+
+  private stopHealthCheck(): void {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = null;
+    }
+    this.consecutiveHealthFailures = 0;
+  }
+
+  private async checkTunnelConnectivity(): Promise<boolean> {
+    try {
+      const res = await fetch("http://cp.cloudflare.com/generate_204", {
+        signal: AbortSignal.timeout(6000),
+      });
+      return res.status === 204 || res.ok;
+    } catch {
+      try {
+        const res2 = await fetch("https://api.ipify.org?format=json", {
+          signal: AbortSignal.timeout(6000),
+        });
+        return res2.ok;
+      } catch {
+        return false;
+      }
+    }
   }
 
   /**

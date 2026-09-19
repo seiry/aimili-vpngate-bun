@@ -87,8 +87,16 @@ if (config.autoReconnect && lastSession.enabled && lastSession.nodeId) {
   }, 3000);
 }
 
+// 5. Periodic node pool refresh (default every 30 minutes)
+const refreshIntervalMs = Math.max(15, config.refreshIntervalMinutes) * 60 * 1000;
+const refreshTimer = setInterval(() => {
+  console.log("[Scheduler] Running periodic VPNGate node list refresh...");
+  refreshNodes().catch((err) => console.error("[Scheduler] Refresh error:", err));
+}, refreshIntervalMs);
+
 const shutdown = async (signal: string) => {
   console.log(`\n[Shutdown] Received ${signal}, closing gracefully...`);
+  clearInterval(refreshTimer);
   // Preserve saved session for container restart auto-recovery
   await vpnManager.disconnect(false);
   await proxyServer.stop();
