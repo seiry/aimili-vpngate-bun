@@ -33,42 +33,88 @@ docker pull ghcr.io/seiry/aimili-vpngate-bun
 
 ---
 
-## 🎯 设计目标与 Coolify 一键部署
+## 🎯 设计目标与部署指南
 
-本项目主要针对 **Coolify** 自托管 PaaS 平台量身设计优化（自适应 Traefik 反向代理、智能单端口复用、自动路由隔离），当然也可以独立部署在任何支持 Docker 与 TUN/TAP 的 Linux VPS 上。
+本项目主要针对 **Coolify** 自托管 PaaS 平台量身设计优化（自适应 Traefik 反向代理、智能单端口复用、自动路由隔离），同时也完全支持独立的 Docker / Docker Compose 部署在任何具备 TUN/TAP 的 Linux VPS 上。
 
-### 方式一：Coolify 一键部署（首选推荐）
+### 方式一：在 Coolify 中使用 Docker Compose 部署（⭐ 最推荐方式）
+
+在 Coolify 中通过 Docker Compose 部署最为简单且省心，无需配置任何复杂的编译环境：
 
 1. **在 Coolify 中新建应用**：
-   - 选择 **Source** -> **Git Repository**（填入本仓库），或直接添加 **Docker Image**：
-     ```text
-     ghcr.io/seiry/aimili-vpngate-bun:latest
+   - 点击 **+ New** -> 选择 **Docker Compose**。
+   - 可以直接关联本 GitHub 仓库，或者直接将本项目的 [`docker-compose.yml`](docker-compose.yml) 内容粘贴到 Compose 配置框中：
+     ```yaml
+     services:
+       aimili-vpngate:
+         image: ghcr.io/seiry/aimili-vpngate-bun:latest
+         container_name: aimili-vpngate-bun
+         restart: unless-stopped
+         cap_add:
+           - NET_ADMIN
+         dns:
+           - 1.1.1.1
+           - 8.8.8.8
+         devices:
+           - /dev/net/tun:/dev/net/tun
+         ports:
+           - "${PROXY_TARGET:-127.0.0.1:1080}:1080"
+         environment:
+           - SERVICE_FQDN_AIMILI_VPNGATE_8787
+           - UI_HOST=0.0.0.0
+           - UI_PORT=8787
+           - UI_USER=${UI_USER:-admin}
+           - UI_PASS=${UI_PASS:-}
+           - PROXY_HOST=0.0.0.0
+           - PROXY_PORT=1080
+           - PROXY_USER=${PROXY_USER:-}
+           - PROXY_PASS=${PROXY_PASS:-}
+           - SSL_VPN_ONLY=${SSL_VPN_ONLY:-true}
+           - AUTO_CONNECT=${AUTO_CONNECT:-false}
+           - PREFERRED_COUNTRY=${PREFERRED_COUNTRY:-JP}
+           - PROXY_TARGET=${PROXY_TARGET:-127.0.0.1:1080}
+         volumes:
+           - vpngate-data:/data
+
+     volumes:
+       vpngate-data:
      ```
-2. **高级设置 (Advanced)**：
-   - **Capabilities**：勾选或添加 `NET_ADMIN`
-   - **Devices**：添加设备映射 `/dev/net/tun:/dev/net/tun`
-3. **端口与域名配置**：
-   - 暴露端口直接填写 `1080`（本项目内置智能单端口复用：浏览器访问该端口直接进入 Web 管理后台，其他应用使用该端口作为 SOCKS5/HTTP 代理）。
-   - Coolify 会自动生成 Traefik HTTPS 域名反向代理。
-4. **环境变量（可选）**：
-   - `UI_USER`：Web 管理后台账号（默认 `admin`）
-   - `UI_PASS`：Web 管理后台密码（首次启动未配置时会自动随机生成并保存在 `/data/ui_auth.json`）
-   - `PROXY_USER` / `PROXY_PASS`：SOCKS5 / HTTP 代理认证账号密码（留空则为免密代理）
-   - `PREFERRED_COUNTRY=JP`：首选优选连接的国家代码
-   - `AUTO_CONNECT=true`：容器启动后是否自动选择最佳家宽节点并连接
-5. 点击 **Deploy** 部署，完成后即可直接打开域名登录面板！
+2. **域名绑定 (Domains)**：
+   - 在 Coolify 界面为 `aimili-vpngate` 服务填入您的管理面板域名（如 `https://vpn.yourdomain.com`）。
+   - Coolify 会根据环境变量 `SERVICE_FQDN_AIMILI_VPNGATE_8787` 自动创建针对内部 8787 端口的 Traefik HTTPS 安全反向代理。
+3. **环境变量（可选设置）**：
+   - `UI_USER`：Web 管理后台登录账号（默认 `admin`）。
+   - `UI_PASS`：Web 管理后台登录密码（强烈建议在 Coolify 界面指定；若不填，容器首次启动会自动生成 10 位强密码并打印在启动日志中）。
+   - `PROXY_TARGET`：代理端口发布地址。默认 `127.0.0.1:1080`（仅允许宿主机访问）；若需要供其他机器使用，可设为 `0.0.0.0:1080` 并配合 `PROXY_USER` 与 `PROXY_PASS` 启用代理认证。
+4. 点击 **Deploy** 部署，Coolify 会直接拉取 GHCR 预构建的多架构镜像（x64 / arm64），部署成功后访问域名即可直接登录面板！
 
 ---
 
-### 方式二：独立 Docker 容器运行
+### 方式二：本地或 VPS 使用 Docker Compose 独立部署
 
-如果不在 Coolify 中使用，也可以使用官方预构建的多架构镜像（支持 x64 / arm64）独立运行：
+如果不在 Coolify 中运行，只需将项目克隆到任意 Linux VPS 上启动：
+
+```bash
+# 启动服务（自动拉取 GHCR 镜像并后台运行）
+docker compose up -d
+
+# 查看容器启动日志（包含初始密码与节点拉取信息）
+docker compose logs -f
+```
+
+容器启动后：
+- 浏览器访问管理面板：`http://YOUR_SERVER_IP:1080/`（通过内置单端口复用自动进入 Web 面板）
+- SOCKS5 / HTTP 代理地址：`socks5://YOUR_SERVER_IP:1080`
+
+---
+
+### 方式三：原生 `docker run` 命令行独立运行
 
 ```bash
 # 拉取最新多架构镜像
-docker pull ghcr.io/seiry/aimili-vpngate-bun
+docker pull ghcr.io/seiry/aimili-vpngate-bun:latest
 
-# 独立启动容器
+# 运行容器
 docker run -d \
   --name aimili-vpngate \
   --restart unless-stopped \
@@ -81,24 +127,6 @@ docker run -d \
   -v vpngate-data:/data \
   ghcr.io/seiry/aimili-vpngate-bun:latest
 ```
-
----
-
-### 方式三：Docker Compose 本地或 VPS 部署
-
-```bash
-# 启动服务
-docker compose up -d
-
-# 查看运行日志与初始密码
-docker compose logs -f
-```
-
-容器启动后：
-- 浏览器访问管理面板：`http://YOUR_SERVER_IP:1080/`
-- SOCKS5 / HTTP 代理地址：`socks5://YOUR_SERVER_IP:1080`
-
----
 
 ## 🛠️ 客户端连接与调用示例
 
