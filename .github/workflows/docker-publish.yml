@@ -99,3 +99,23 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=aimili-multiarch
           cache-to: type=gha,mode=max,scope=aimili-multiarch
+
+      - name: Trigger Coolify Redeploy Webhook
+        if: github.event_name != 'pull_request'
+        env:
+          COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK_URL }}
+        run: |
+          if [ -n "${COOLIFY_WEBHOOK}" ]; then
+            echo "Triggering Coolify redeploy webhook..."
+            response=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" -X GET "${COOLIFY_WEBHOOK}" || true)
+            code=$(echo "${response}" | grep "HTTP_STATUS:" | cut -d':' -f2)
+            echo "Coolify response HTTP code: ${code}"
+            if [ "${code}" -ge 200 ] && [ "${code}" -lt 400 ]; then
+              echo "Coolify redeployment triggered successfully."
+            else
+              echo "Warning: Coolify webhook returned unexpected status ${code}. Output:"
+              echo "${response}"
+            fi
+          else
+            echo "COOLIFY_WEBHOOK_URL secret is not set, skipping automatic redeploy."
+          fi
