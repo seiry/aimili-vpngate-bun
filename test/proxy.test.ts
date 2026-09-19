@@ -2,6 +2,7 @@ import { test, expect, beforeAll, afterAll } from "bun:test";
 import net from "node:net";
 import http from "node:http";
 import { ProxyServer } from "../src/proxy.ts";
+import { config } from "../src/config.ts";
 
 let echoServer: net.Server;
 let echoPort = 0;
@@ -139,6 +140,39 @@ test("SOCKS5 Username/Password authentication", async () => {
     }
   });
 
+  client.on("error", reject);
+  await promise;
+});
+test("Direct web visit to proxy port routes to Web UI instead of 407", async () => {
+  const testProxyPort = 19082;
+  const authProxy = new ProxyServer({ user: "aimili", pass: "secret123" });
+  await authProxy.start(testProxyPort, "127.0.0.1");
+
+  // Start mock Web UI on config.uiPort
+  const { promise: webReady, resolve: resolveWebReady } = Promise.withResolvers<void>();
+  const mockUi = net.createServer((sock) => {
+    sock.write("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"AimiliVPN Gate\"\r\n\r\n");
+    sock.end();
+  }).listen(config.uiPort, "127.0.0.1", () => resolveWebReady());
+  await webReady;
+
+  // Now send a browser direct GET request to the authenticated proxy port
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const client = net.connect({ host: "127.0.0.1", port: testProxyPort });
+  client.once("connect", () => {
+    client.write("GET / HTTP/1.1\r\nHost: 127.0.0.1:19082\r\nUser-Agent: Mozilla/5.0\r\n\r\n");
+  });
+
+  client.on("data", (data) => {
+    const text = data.toString();
+    // It must return 401 with WWW-Authenticate (triggering browser login), NOT 407!
+    expect(text).toContain("401 Unauthorized");
+    expect(text).toContain("WWW-Authenticate");
+    expect(text).not.toContain("407");
+    client.end();
+    mockUi.close();
+    authProxy.stop().then(() => resolve());
+  });
   client.on("error", reject);
   await promise;
 });

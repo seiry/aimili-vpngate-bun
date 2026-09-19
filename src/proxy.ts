@@ -217,7 +217,13 @@ export class ProxyServer {
     const firstLine = rawHeader.substring(0, firstLineEnd);
     const [method, target, httpVersion] = firstLine.split(" ");
 
-    // Check basic auth if required
+    // If client is accessing the Web UI directly on this port (e.g. via Coolify reverse proxy or browser)
+    if (method && method.toUpperCase() !== "CONNECT" && target && target.startsWith("/") && !target.startsWith("//")) {
+      this.pipeOutbound(clientSocket, "127.0.0.1", config.uiPort, undefined, initialChunk);
+      return;
+    }
+
+    // Check proxy auth if required (for forward proxy clients)
     const { user: authUser, pass: authPass } = this.getAuth();
     if (authUser && authPass) {
       const authMatch = rawHeader.match(/proxy-authorization:\s*basic\s+([A-Za-z0-9+/=]+)/i);

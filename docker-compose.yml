@@ -16,7 +16,7 @@ services:
     ports:
       - "${PROXY_TARGET:-127.0.0.1:1080}:1080"
     environment:
-      - SERVICE_FQDN_DASHBOARD_8787
+      - SERVICE_FQDN_AIMILI_VPNGATE_8787
       - UI_HOST=0.0.0.0
       - UI_PORT=8787
       - UI_USER=${UI_USER:-admin}
