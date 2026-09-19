@@ -1,47 +1,49 @@
-FROM debian:bookworm-slim
+FROM oven/bun:1-debian
 
-ARG TARGETARCH
-ARG TARGETVARIANT
-ARG BUILD_VERSION=dev
+LABEL maintainer="AimiliVPN" \
+      description="VPNGate SSL-VPN to SOCKS5 Gateway powered by Bun"
 
-LABEL org.opencontainers.image.title="AimiliVPN" \
-      org.opencontainers.image.description="VPNGate node manager with HTTP and SOCKS5 proxy" \
-      org.opencontainers.image.source="https://github.com/baoweise-bot/aimili-vpngate" \
-      org.opencontainers.image.version="${BUILD_VERSION}"
-
+# Install OpenVPN, routing utilities and ca-certificates
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
+        curl \
         iproute2 \
         iptables \
+        iputils-ping \
         openvpn \
         procps \
-        psmisc \
-        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY VERSION README.md LICENSE ./
-COPY vpngate_manager.py vpn_utils.py proxy_server.py snapshot_utils.py ./
+
+# Copy dependency files and install production dependencies
+COPY package.json tsconfig.json ./
+RUN bun install --production
+
+# Copy source code, frontend assets and bundled mirror
+COPY src ./src
+COPY public ./public
 COPY mirror ./mirror
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    DEPLOYMENT_MODE=docker \
+# Default environment configuration
+ENV NODE_ENV=production \
     VPNGATE_DATA_DIR=/data \
     UI_HOST=0.0.0.0 \
     UI_PORT=8787 \
-    LOCAL_PROXY_HOST=127.0.0.1 \
-    LOCAL_PROXY_PORT=7928
+    PROXY_HOST=0.0.0.0 \
+    PROXY_PORT=1080 \
+    SSL_VPN_ONLY=true \
+    AUTO_CONNECT=false \
+    PREFERRED_COUNTRY=JP
 
-RUN mkdir -p /data \
-    && python3 -m py_compile vpngate_manager.py vpn_utils.py proxy_server.py snapshot_utils.py
+RUN mkdir -p /data
 
 VOLUME ["/data"]
-EXPOSE 8787/tcp 7928/tcp
-STOPSIGNAL SIGTERM
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD python3 -c "import os,socket; s=socket.create_connection(('127.0.0.1',int(os.environ.get('UI_PORT','8787'))),3); s.close()"
+EXPOSE 8787/tcp 1080/tcp
 
-CMD ["python3", "vpngate_manager.py"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -fs http://127.0.0.1:8787/api/health || exit 1
+
+CMD ["bun", "run", "src/index.ts"]

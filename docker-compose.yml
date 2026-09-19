@@ -1,0 +1,32 @@
+services:
+  aimili-vpngate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aimili-vpngate-bun:latest
+    container_name: aimili-vpngate-bun
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    devices:
+      - /dev/net/tun:/dev/net/tun
+      - "${UI_PORT:-8787}:8787"
+      - "${PROXY_PORT:-1080}:1080"
+    environment:
+      - UI_HOST=0.0.0.0
+      - UI_PORT=8787
+      - PROXY_HOST=0.0.0.0
+      - PROXY_PORT=1080
+      - PROXY_USER=${PROXY_USER:-}
+      - PROXY_PASS=${PROXY_PASS:-}
+      - SSL_VPN_ONLY=${SSL_VPN_ONLY:-true}
+      - AUTO_CONNECT=${AUTO_CONNECT:-false}
+      - PREFERRED_COUNTRY=${PREFERRED_COUNTRY:-JP}
+    volumes:
+      - vpngate-data:/data
+
+volumes:
+  vpngate-data:

@@ -1,0 +1,16 @@
+{
+  "name": "aimili-vpngate-bun",
+  "version": "1.0.0",
+  "description": "VPNGate SSL-VPN Node Manager & SOCKS5 Proxy Gateway powered by Bun",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
