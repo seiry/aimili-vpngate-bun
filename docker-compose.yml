@@ -1,6 +1,7 @@
 services:
   aimili-vpngate:
     image: ghcr.io/seiry/aimili-vpngate-bun:latest
+    pull_policy: always
     container_name: aimili-vpngate-bun
     restart: unless-stopped
     cap_add:
