@@ -184,9 +184,9 @@ app.post("/api/nodes/:id/test", async (c) => {
   });
 });
 
-// Disconnect
+// Disconnect (intentional user action -> clears auto-reconnect session)
 app.post("/api/disconnect", async (c) => {
-  await vpnManager.disconnect();
+  await vpnManager.disconnect(true);
   return c.json({ success: true, state: "disconnected" });
 });
 

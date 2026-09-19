@@ -3,7 +3,7 @@ import { proxyServer } from "./proxy.ts";
 import { vpnManager } from "./vpn.ts";
 import { app } from "./routes.ts";
 import { refreshNodes } from "./fetcher.ts";
-import { getAllNodes } from "./db.ts";
+import { getAllNodes, getNodeById, getLastConnectedInfo } from "./db.ts";
 
 console.log("=================================================");
 console.log("   AimiliVPN Gate (Bun) - SSL-VPN to SOCKS5 Gateway");
@@ -40,8 +40,25 @@ if (cachedNodes.length === 0) {
   refreshNodes().catch((err) => console.error("[Init] Background update error:", err));
 }
 
-// 4. Auto-connect if enabled
-if (config.autoConnect) {
+// 4. Automatic Session Recovery on Restart or Auto-Connect
+const lastSession = getLastConnectedInfo();
+if (config.autoReconnect && lastSession.enabled && lastSession.nodeId) {
+  setTimeout(async () => {
+    console.log(`[AutoReconnect] Detected saved VPN session from previous run (Node: ${lastSession.nodeId})`);
+    const savedNode = getNodeById(lastSession.nodeId);
+    if (savedNode) {
+      console.log(`[AutoReconnect] Restoring connection to previously used node: ${savedNode.countryZh} (${savedNode.ip})...`);
+      const res = await vpnManager.connect(savedNode);
+      if (!res.success) {
+        console.warn(`[AutoReconnect] Previous node ${savedNode.ip} failed to reconnect. Attempting failover in ${lastSession.country || config.preferredCountry}...`);
+        await vpnManager.reconnectFailover(lastSession.country || config.preferredCountry);
+      }
+    } else {
+      console.warn(`[AutoReconnect] Previous node ${lastSession.nodeId} is no longer reachable. Failing over to best node in ${lastSession.country || config.preferredCountry}...`);
+      await vpnManager.reconnectFailover(lastSession.country || config.preferredCountry);
+    }
+  }, 2500);
+} else if (config.autoConnect) {
   setTimeout(async () => {
     const nodes = getAllNodes(true);
     if (nodes.length === 0) return;
@@ -70,17 +87,10 @@ if (config.autoConnect) {
   }, 3000);
 }
 
-// 5. Periodic background refresh
-const refreshIntervalMs = Math.max(10, config.refreshIntervalMinutes) * 60 * 1000;
-setInterval(() => {
-  console.log("[Scheduler] Running periodic node list refresh...");
-  refreshNodes().catch((err) => console.error("[Scheduler] Refresh error:", err));
-}, refreshIntervalMs);
-
-// 6. Graceful shutdown
 const shutdown = async (signal: string) => {
   console.log(`\n[Shutdown] Received ${signal}, closing gracefully...`);
-  await vpnManager.disconnect();
+  // Preserve saved session for container restart auto-recovery
+  await vpnManager.disconnect(false);
   await proxyServer.stop();
   server.stop();
   console.log("[Shutdown] Complete. Bye!");

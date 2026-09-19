@@ -286,3 +286,21 @@ export function getSetting(key: string, defaultVal = ""): string {
 export function setSetting(key: string, value: string): void {
   db.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [key, value]);
 }
+export function saveLastConnected(node: VpnNode): void {
+  setSetting("last_connected_node_id", node.id);
+  setSetting("last_connected_country", node.countryShort);
+  setSetting("last_connected_time", String(Date.now()));
+  setSetting("auto_reconnect_enabled", "true");
+}
+
+export function clearLastConnected(): void {
+  setSetting("auto_reconnect_enabled", "false");
+  setSetting("last_connected_node_id", "");
+}
+
+export function getLastConnectedInfo(): { nodeId: string; country: string; enabled: boolean } {
+  const nodeId = getSetting("last_connected_node_id", "");
+  const country = getSetting("last_connected_country", "");
+  const enabled = getSetting("auto_reconnect_enabled", "true") === "true";
+  return { nodeId, country, enabled: Boolean(enabled && nodeId) };
+}

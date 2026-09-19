@@ -119,6 +119,7 @@ export const config: AppConfig = {
   mirrorUrl: getEnv("VPNGATE_MIRROR_URL", "https://baoweise-bot.github.io/aimili-vpngate/vpngate.csv"),
   refreshIntervalMinutes: getEnvInt("REFRESH_INTERVAL_MINUTES", 30),
   autoConnect: getEnvBool("AUTO_CONNECT", false),
+  autoReconnect: getEnvBool("AUTO_RECONNECT", true),
   preferredCountry: resolveCountryCode(process.env.PREFERRED_COUNTRY || "JP"),
   sslVpnOnly: getEnvBool("SSL_VPN_ONLY", false),
 };

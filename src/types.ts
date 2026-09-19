@@ -78,6 +78,7 @@ export interface AppConfig {
   mirrorUrl?: string;
   refreshIntervalMinutes: number;
   autoConnect: boolean;
+  autoReconnect?: boolean;
   preferredCountry: string;
   sslVpnOnly: boolean;
 }

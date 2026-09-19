@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, type Subprocess } from "bun";
 import { config } from "./config.ts";
+import { saveLastConnected, clearLastConnected, getAllNodes } from "./db.ts";
 import type { VpnNode, VpnStatus, ConnectionState } from "./types.ts";
 
 export class VpnManager {
@@ -14,6 +15,7 @@ export class VpnManager {
   private egressCountryCode: string | null = null;
   private egressIsp: string | null = null;
   private lastError: string | null = null;
+  private isIntentionalDisconnect = false;
   private logBuffer: string[] = [];
   private maxLogEntries = 200;
 
@@ -161,6 +163,7 @@ export class VpnManager {
     }
 
     this.state = "connecting";
+    this.isIntentionalDisconnect = false;
     this.activeNode = node;
     this.lastError = null;
     this.egressIp = null;
@@ -225,6 +228,7 @@ export class VpnManager {
               clearTimeout(timeoutTimer);
               this.state = "connected";
               this.connectedAt = Date.now();
+              saveLastConnected(node);
               this.addLog("VPN connection successfully established!");
               this.refreshEgressInfo();
               finish({ success: true });
@@ -255,13 +259,27 @@ export class VpnManager {
 
       this.process.exited.then((code) => {
         this.addLog(`OpenVPN process exited with code ${code}`);
+        const wasConnected = this.state === "connected";
+        const previousNode = this.activeNode;
         if (this.state === "connecting" || this.state === "connected") {
           this.state = code === 0 ? "disconnected" : "error";
           this.lastError = `Process exited with code ${code}`;
           finish({ success: false, error: this.lastError });
         }
-      });
 
+        if (wasConnected && !this.isIntentionalDisconnect && previousNode) {
+          this.addLog("[Watchdog] Connection dropped unexpectedly. Attempting automatic recovery in 5s...");
+          setTimeout(async () => {
+            if (this.state === "disconnected" || this.state === "error") {
+              const res = await this.connect(previousNode);
+              if (!res.success) {
+                this.addLog(`[Watchdog] Reconnecting to ${previousNode.ip} failed. Attempting failover...`);
+                await this.reconnectFailover(previousNode.countryShort);
+              }
+            }
+          }, 5000);
+        }
+      });
       return await promise;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -275,7 +293,11 @@ export class VpnManager {
   /**
    * Disconnects current VPN session
    */
-  async disconnect(): Promise<void> {
+  async disconnect(intentional = true): Promise<void> {
+    this.isIntentionalDisconnect = intentional;
+    if (intentional) {
+      clearLastConnected();
+    }
     if (!this.process && this.state === "disconnected") return;
 
     this.state = "disconnecting";
@@ -310,6 +332,41 @@ export class VpnManager {
     this.egressCountryCode = null;
     this.egressIsp = null;
     this.addLog("VPN disconnected.");
+  }
+  /**
+   * Automatic failover: finds the next best SSL-VPN node in the target country
+   */
+  async reconnectFailover(country?: string): Promise<boolean> {
+    const nodes = getAllNodes(true);
+    if (nodes.length === 0) return false;
+
+    const pref = country ? country.toUpperCase() : "";
+    let target: VpnNode | null = null;
+
+    if (pref) {
+      const prefRes = nodes.filter(
+        (n) => n.ipType === "residential" && (n.countryShort.toUpperCase() === pref || n.countryZh === pref)
+      );
+      target = prefRes.length > 0 ? prefRes[0] : null;
+      if (!target) {
+        const prefAny = nodes.filter(
+          (n) => n.countryShort.toUpperCase() === pref || n.countryZh === pref
+        );
+        target = prefAny.length > 0 ? prefAny[0] : null;
+      }
+    }
+
+    if (!target) {
+      const anyRes = nodes.filter((n) => n.ipType === "residential");
+      target = anyRes.length > 0 ? anyRes[0] : nodes[0];
+    }
+
+    if (target) {
+      this.addLog(`[Failover] Reconnecting to backup node: ${target.countryZh} (${target.ip})...`);
+      const res = await this.connect(target);
+      return res.success;
+    }
+    return false;
   }
 
   /**

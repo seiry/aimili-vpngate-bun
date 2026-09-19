@@ -24,6 +24,7 @@ services:
       - PROXY_PASS=${PROXY_PASS:-}
       - SSL_VPN_ONLY=${SSL_VPN_ONLY:-true}
       - AUTO_CONNECT=${AUTO_CONNECT:-false}
+      - AUTO_RECONNECT=${AUTO_RECONNECT:-true}
       - PREFERRED_COUNTRY=${PREFERRED_COUNTRY:-JP}
       - PROXY_TARGET=${PROXY_TARGET:-127.0.0.1:1080}
     volumes:

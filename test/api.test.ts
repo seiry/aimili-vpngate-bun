@@ -1,7 +1,7 @@
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { handleRequest } from "../src/routes.ts";
 import { config } from "../src/config.ts";
-import { getAllNodes, saveNodes } from "../src/db.ts";
+import { getAllNodes, saveNodes, saveLastConnected, clearLastConnected, getLastConnectedInfo } from "../src/db.ts";
 
 beforeAll(() => {
   // Seed a sample SSL-VPN node into database for tests
@@ -138,4 +138,42 @@ test("POST /api/smart-connect prioritizes preferredCountry (KR)", async () => {
   const body = (await res.json()) as { success: boolean; node: { countryShort: string; ip: string } };
   expect(body.success).toBe(true);
   expect(body.node.countryShort).toBe("KR");
+});
+test("Session persistence saves and clears last connected node", () => {
+  const sampleNode = {
+    id: "KR_test_reconnect_node",
+    hostName: "vpn-test.opengw.net",
+    ip: "220.120.133.103",
+    score: 1000,
+    ping: 30,
+    speed: 50000000,
+    speedFormatted: "50 Mbps",
+    countryLong: "Korea",
+    countryShort: "KR",
+    countryZh: "韩国",
+    numVpnSessions: 10,
+    uptime: 1000,
+    totalUsers: 100,
+    totalTraffic: 1000,
+    operator: "Test",
+    message: "",
+    hasSslVpn: true,
+    sslVpnPort: 443,
+    sslVpnProto: "tcp" as const,
+    openVpnProto: "tcp" as const,
+    openVpnPort: 443,
+    latencyMs: null,
+    lastUpdated: Date.now(),
+  };
+
+  saveLastConnected(sampleNode);
+  const info = getLastConnectedInfo();
+  expect(info.enabled).toBe(true);
+  expect(info.nodeId).toBe("KR_test_reconnect_node");
+  expect(info.country).toBe("KR");
+
+  clearLastConnected();
+  const cleared = getLastConnectedInfo();
+  expect(cleared.enabled).toBe(false);
+  expect(cleared.nodeId).toBe("");
 });
