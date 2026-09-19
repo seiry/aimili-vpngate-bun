@@ -913,6 +913,7 @@
                 ${n.ipType === 'residential' ? '<span class="badge-residential">🏠 家庭宽带</span>' : (n.ipType === 'datacenter' ? '<span class="badge-datacenter">🏢 机房节点</span>' : (n.ipType === 'mobile' ? '<span class="badge-mobile">📱 移动蜂窝</span>' : ''))}
               </div>
             </td>
+            <td>
               <div style="font-weight: 700; color: #818cf8;">${n.speedFormatted || "0 bps"}</div>
               <div class="${pingClass}">${pingVal} ms ${n.latencyMs ? "(实测)" : ""}</div>
             </td>
