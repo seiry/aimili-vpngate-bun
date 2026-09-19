@@ -298,13 +298,13 @@
     .controls-bar {
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
-      border-radius: var(--card-radius);
-      padding: 14px 18px;
+      border-radius: 10px;
+      padding: 8px 12px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 8px;
     }
 
     .tab-group {
@@ -530,42 +530,167 @@
       right: 8px;
     }
 
-    /* Logs Drawer */
-    .logs-drawer {
-      background: #030712;
-      border: 1px solid var(--border-color);
-      border-radius: var(--card-radius);
-      padding: 16px;
+    /* Sticky Top Zone */
+    .sticky-top-zone {
+      position: sticky;
+      top: 64px;
+      z-index: 90;
+      background: rgba(9, 13, 22, 0.95);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      padding: 10px 0 12px 0;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
     }
 
-    .logs-header {
+    /* Floating Log Trigger Button */
+    .floating-log-btn {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 150;
+      height: 42px;
+      padding: 0 18px;
+      border-radius: 24px;
+      background: rgba(18, 25, 41, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-accent);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 14px rgba(99, 102, 241, 0.3);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .floating-log-btn:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.7), 0 0 20px rgba(99, 102, 241, 0.45);
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      display: inline-block;
+    }
+
+    .log-count-badge {
+      background: rgba(99, 102, 241, 0.3);
+      color: #c7d2fe;
+      border: 1px solid rgba(99, 102, 241, 0.5);
+      padding: 1px 7px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    /* Floating Side Drawer Backdrop */
+    .side-drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 190;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .side-drawer-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Floating Side Drawer Panel */
+    .side-log-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 500px;
+      max-width: 90vw;
+      background: rgba(10, 14, 24, 0.98);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-left: 1px solid var(--border-accent);
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -12px 0 45px rgba(0, 0, 0, 0.8);
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .side-log-drawer.open {
+      transform: translateX(0);
+    }
+
+    .side-drawer-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-color);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-secondary);
+      background: rgba(14, 20, 34, 0.9);
     }
 
-    .logs-terminal {
-      background: #000;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
-      padding: 12px;
-      font-family: monospace;
-      font-size: 12px;
+    .side-drawer-header h3 {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .drawer-close-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 22px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+
+    .drawer-close-btn:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .side-drawer-terminal {
+      flex: 1;
+      background: #020617;
+      padding: 14px 16px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11.5px;
       color: #94a3b8;
-      max-height: 200px;
       overflow-y: auto;
-      line-height: 1.5;
+      line-height: 1.6;
+      word-break: break-all;
+    }
+
+    .side-drawer-footer {
+      padding: 8px 16px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(14, 20, 34, 0.9);
     }
 
     .log-line-err { color: #f87171; }
     .log-line-ok { color: #34d399; }
-  </style>
 </head>
 <body>
 
@@ -595,9 +720,10 @@
 
   <main class="container">
 
-    <!-- Stats Grid -->
-    <section class="stats-grid">
-      <div class="stat-card" id="cardStatus">
+    <!-- Sticky Top Controls Zone -->
+    <div class="sticky-top-zone">
+      <!-- Stats Grid -->
+      <section class="stats-grid">
         <div class="stat-label">
           <span class="status-dot" id="statusDot"></span>
           网关状态
@@ -674,7 +800,8 @@
 
         <input type="text" id="searchInput" placeholder="搜索 IP / 国家 / 主机名..." oninput="applyFilters()">
       </div>
-    </section>
+      </section>
+    </div>
 
     <!-- Nodes Table -->
     <section class="nodes-container">
@@ -699,16 +826,6 @@
       </table>
     </section>
 
-    <!-- Live Logs -->
-    <section class="logs-drawer">
-      <div class="logs-header">
-        <span>实时运行日志 (OpenVPN Core & Proxy)</span>
-        <button class="btn btn-sm" onclick="clearLogs()">清空显示</button>
-      </div>
-      <div class="logs-terminal" id="logsTerminal">
-        等待日志事件...
-      </div>
-    </section>
 
   </main>
 
@@ -841,11 +958,20 @@
         // Update logs
         if (vpn.logs && vpn.logs.length > 0) {
           const term = document.getElementById("logsTerminal");
-          term.innerHTML = vpn.logs.map(l => {
-            const cls = l.includes("[ERR]") ? "log-line-err" : (l.includes("Initialization Sequence Completed") || l.includes("Verified") ? "log-line-ok" : "");
-            return `<div class="${cls}">${escapeHtml(l)}</div>`;
-          }).join("");
-          term.scrollTop = term.scrollHeight;
+          if (term) {
+            term.innerHTML = vpn.logs.map(l => {
+              const cls = l.includes("[ERR]") ? "log-line-err" : (l.includes("Initialization Sequence Completed") || l.includes("Verified") ? "log-line-ok" : "");
+              return `<div class="${cls}">${escapeHtml(l)}</div>`;
+            }).join("");
+            const autoScroll = document.getElementById("autoScrollCheck");
+            if (!autoScroll || autoScroll.checked) {
+              term.scrollTop = term.scrollHeight;
+            }
+          }
+          const badge = document.getElementById("logCountBadge");
+          if (badge) badge.textContent = vpn.logs.length;
+          const stat = document.getElementById("drawerLogStat");
+          if (stat) stat.textContent = `${vpn.logs.length} 条日志`;
         }
 
       } catch (err) {
@@ -1072,6 +1198,56 @@
     fetchStatus();
     loadNodes();
     setInterval(fetchStatus, 3000);
+  </script>
+  <!-- Floating Log Toggle Button -->
+  <button class="floating-log-btn" id="floatingLogBtn" onclick="toggleLogDrawer()" title="查看实时运行日志">
+    <span class="pulse-dot" id="logPulseDot"></span>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="4 17 10 11 4 5"></polyline>
+      <line x1="12" y1="19" x2="20" y2="19"></line>
+    </svg>
+    <span>运行日志</span>
+    <span class="log-count-badge" id="logCountBadge">0</span>
+  </button>
+
+  <!-- Floating Side Drawer Backdrop -->
+  <div class="side-drawer-backdrop" id="sideDrawerBackdrop" onclick="toggleLogDrawer(false)"></div>
+
+  <!-- Floating Side Drawer Panel -->
+  <aside class="side-log-drawer" id="sideLogDrawer">
+    <div class="side-drawer-header">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="pulse-dot"></span>
+        <h3>实时运行日志 (OpenVPN & Proxy)</h3>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button class="btn btn-sm" onclick="clearLogs()">清空</button>
+        <button class="drawer-close-btn" onclick="toggleLogDrawer(false)">&times;</button>
+      </div>
+    </div>
+    <div class="side-drawer-terminal" id="logsTerminal">
+      等待日志事件...
+    </div>
+    <div class="side-drawer-footer">
+      <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); cursor: pointer;">
+        <input type="checkbox" id="autoScrollCheck" checked> 自动滚动到底部
+      </label>
+      <span style="font-size: 11px; color: var(--text-secondary);" id="drawerLogStat">0 条日志</span>
+    </div>
+  </aside>
+
+  <script>
+    let logDrawerOpen = false;
+    function toggleLogDrawer(open) {
+      logDrawerOpen = typeof open === "boolean" ? open : !logDrawerOpen;
+      const drawer = document.getElementById("sideLogDrawer");
+      const backdrop = document.getElementById("sideDrawerBackdrop");
+      if (drawer) drawer.classList.toggle("open", logDrawerOpen);
+      if (backdrop) backdrop.classList.toggle("open", logDrawerOpen);
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && logDrawerOpen) toggleLogDrawer(false);
+    });
   </script>
 </body>
 </html>
