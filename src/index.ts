@@ -1,7 +1,7 @@
 import { config } from "./config.ts";
 import { proxyServer } from "./proxy.ts";
 import { vpnManager } from "./vpn.ts";
-import { handleRequest } from "./routes.ts";
+import { app } from "./routes.ts";
 import { refreshNodes } from "./fetcher.ts";
 import { getAllNodes } from "./db.ts";
 
@@ -25,7 +25,7 @@ await proxyServer.start();
 const server = Bun.serve({
   port: config.uiPort,
   hostname: config.uiHost,
-  fetch: handleRequest,
+  fetch: app.fetch,
 });
 console.log(`[Web] Dashboard running at http://${server.hostname}:${server.port}`);
 

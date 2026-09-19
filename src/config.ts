@@ -55,6 +55,11 @@ if (!uiPass) {
   }
 }
 
+const rawProxyUser = process.env.LOCAL_PROXY_USER ?? process.env.PROXY_USER ?? "";
+const rawProxyPass = process.env.LOCAL_PROXY_PASS ?? process.env.PROXY_PASS ?? "";
+const proxyUser = rawProxyUser.trim().length > 0 ? rawProxyUser.trim() : undefined;
+const proxyPass = rawProxyPass.trim().length > 0 ? rawProxyPass.trim() : undefined;
+
 export const config: AppConfig = {
   uiHost: getEnv("UI_HOST", "0.0.0.0"),
   uiPort: getEnvInt("UI_PORT", 8787),
@@ -63,13 +68,13 @@ export const config: AppConfig = {
   uiAuthEnabled: Boolean(uiUser && uiPass),
   proxyHost: getEnv("LOCAL_PROXY_HOST", getEnv("PROXY_HOST", "0.0.0.0")),
   proxyPort: getEnvInt("LOCAL_PROXY_PORT", getEnvInt("PROXY_PORT", 1080)),
-  proxyUser: process.env.LOCAL_PROXY_USER || process.env.PROXY_USER,
-  proxyPass: process.env.LOCAL_PROXY_PASS || process.env.PROXY_PASS,
+  proxyUser,
+  proxyPass,
   dataDir,
   vpngateHtmlUrl: getEnv("VPNGATE_HTML_URL", "https://www.vpngate.net/cn/"),
   vpngateApiUrl: getEnv("VPNGATE_API_URL", "https://www.vpngate.net/api/iphone/"),
   mirrorUrl: getEnv("VPNGATE_MIRROR_URL", "https://baoweise-bot.github.io/aimili-vpngate/vpngate.csv"),
-  refreshIntervalMinutes: getEnvInt("REFRESH_INTERVAL_MINUTES", 60),
+  refreshIntervalMinutes: getEnvInt("REFRESH_INTERVAL_MINUTES", 30),
   autoConnect: getEnvBool("AUTO_CONNECT", false),
   preferredCountry: getEnv("PREFERRED_COUNTRY", "JP"),
   sslVpnOnly: getEnvBool("SSL_VPN_ONLY", false),

@@ -287,13 +287,27 @@ export function mergeNodes(htmlNodes: VpnNode[], csvNodes: VpnNode[]): VpnNode[]
   return merged;
 }
 
+let lastSyncTime: number | null = null;
+let isSyncing = false;
+let syncError: string | null = null;
+
+export function getSyncStatus() {
+  return {
+    lastSyncTime,
+    isSyncing,
+    syncError,
+    intervalMinutes: config.refreshIntervalMinutes,
+  };
+}
+
 /**
  * Fetches nodes from VPNGate and saves to SQLite
  */
 export async function refreshNodes(): Promise<{ count: number; sslCount: number; error?: string }> {
+  isSyncing = true;
+  syncError = null;
   let htmlContent = "";
   let csvContent = "";
-
   // 1. Fetch HTML from https://www.vpngate.net/cn/
   try {
     const res = await fetch(config.vpngateHtmlUrl, {
@@ -364,17 +378,138 @@ export async function refreshNodes(): Promise<{ count: number; sslCount: number;
   if (finalNodes.length > 0) {
     saveNodes(finalNodes);
     const sslCount = finalNodes.filter((n) => n.hasSslVpn).length;
+    lastSyncTime = Date.now();
+    isSyncing = false;
     console.log(`[Fetcher] Successfully updated ${finalNodes.length} nodes (${sslCount} SSL-VPN).`);
     return { count: finalNodes.length, sslCount };
   }
 
-  return { count: 0, sslCount: 0, error: "Failed to fetch nodes from all sources." };
+  isSyncing = false;
+  syncError = "Failed to fetch nodes from all sources.";
+  return { count: 0, sslCount: 0, error: syncError };
+}
+
+let cachedPhysicalIface: string | null = null;
+
+export function detectPhysicalInterface(): string {
+  if (cachedPhysicalIface) return cachedPhysicalIface;
+  if (process.platform !== "linux") {
+    cachedPhysicalIface = "eth0";
+    return cachedPhysicalIface;
+  }
+  try {
+    const res = Bun.spawnSync(["ip", "route", "show"]);
+    const lines = res.stdout.toString().split("\n");
+    for (const line of lines) {
+      if (line.startsWith("default")) {
+        const match = line.match(/dev\s+([^\s]+)/);
+        if (match) {
+          const dev = match[1];
+          if (!dev.startsWith("tun") && !dev.startsWith("tap") && !dev.startsWith("wg") && !dev.startsWith("ppp")) {
+            cachedPhysicalIface = dev;
+            return dev;
+          }
+        }
+      }
+    }
+  } catch {}
+  cachedPhysicalIface = "eth0";
+  return cachedPhysicalIface;
+}
+
+interface LibcBinding {
+  symbols: {
+    socket: (domain: number, type: number, protocol: number) => number;
+    setsockopt: (fd: number, level: number, optname: number, optval: unknown, optlen: number) => number;
+    connect: (fd: number, addr: unknown, addrlen: number) => number;
+    fcntl: (fd: number, cmd: number, arg: number) => number;
+    close: (fd: number) => number;
+    poll: (fds: unknown, nfds: number, timeout: number) => number;
+    getsockopt: (fd: number, level: number, optname: number, optval: unknown, optlen: unknown) => number;
+  };
+}
+
+let libcInstance: LibcBinding | false | null = null;
+function getLibc(): LibcBinding | false {
+  if (libcInstance !== null) return libcInstance;
+  if (process.platform !== "linux") {
+    libcInstance = false;
+    return false;
+  }
+  try {
+    const { dlopen, FFIType } = require("bun:ffi");
+    libcInstance = dlopen("libc.so.6", {
+      socket: { args: [FFIType.i32, FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+      setsockopt: { args: [FFIType.i32, FFIType.i32, FFIType.i32, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
+      connect: { args: [FFIType.i32, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
+      fcntl: { args: [FFIType.i32, FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+      close: { args: [FFIType.i32], returns: FFIType.i32 },
+      poll: { args: [FFIType.ptr, FFIType.u32, FFIType.i32], returns: FFIType.i32 },
+      getsockopt: { args: [FFIType.i32, FFIType.i32, FFIType.i32, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+    }) as LibcBinding;
+  } catch {
+    libcInstance = false;
+  }
+  return libcInstance;
 }
 
 /**
- * Tests direct TCP connection latency to a node's SSL-VPN port
+ * Tests direct TCP connection latency to a node's SSL-VPN port.
+ * Binds to physical interface (e.g. eth0) to bypass active VPN tunnel (preventing node1 -> node2 detour).
  */
 export async function testNodeLatency(ip: string, port: number, timeoutMs = 2500): Promise<number | null> {
+  const iface = detectPhysicalInterface();
+  const libc = getLibc();
+
+  // On Linux with FFI available, use SO_BINDTODEVICE for zero-detour direct latency test
+  if (libc) {
+    try {
+      const { ptr } = require("bun:ffi");
+      const started = performance.now();
+      const fd = libc.symbols.socket(2, 1, 0); // AF_INET, SOCK_STREAM
+      if (fd >= 0) {
+        try {
+          if (iface) {
+            const devBuf = Buffer.from(iface + "\0");
+            libc.symbols.setsockopt(fd, 1, 25, ptr(devBuf), devBuf.length); // SO_BINDTODEVICE
+          }
+          libc.symbols.fcntl(fd, 4, 2048); // O_NONBLOCK
+
+          const sockaddr = Buffer.alloc(16);
+          sockaddr.writeUInt16LE(2, 0); // AF_INET
+          sockaddr.writeUInt16BE(port, 2);
+          const ipParts = ip.split(".").map(Number);
+          sockaddr.writeUInt8(ipParts[0], 4);
+          sockaddr.writeUInt8(ipParts[1], 5);
+          sockaddr.writeUInt8(ipParts[2], 6);
+          sockaddr.writeUInt8(ipParts[3], 7);
+
+          libc.symbols.connect(fd, ptr(sockaddr), 16);
+
+          const pollfd = Buffer.alloc(8);
+          pollfd.writeInt32LE(fd, 0);
+          pollfd.writeInt16LE(4, 4); // POLLOUT
+
+          const pollRet = libc.symbols.poll(ptr(pollfd), 1, timeoutMs);
+          if (pollRet > 0) {
+            const errVal = Buffer.alloc(4);
+            const errLen = Buffer.alloc(4);
+            errLen.writeUInt32LE(4, 0);
+            libc.symbols.getsockopt(fd, 1, 4, ptr(errVal), ptr(errLen));
+            if (errVal.readInt32LE(0) === 0) {
+              return Math.max(1, Math.round(performance.now() - started));
+            }
+          }
+        } finally {
+          libc.symbols.close(fd);
+        }
+      }
+    } catch {
+      // Fallback below
+    }
+  }
+
+  // Fallback to standard net.Socket if FFI unavailable
   const { promise, resolve } = Promise.withResolvers<number | null>();
   const started = Date.now();
   const socket = new net.Socket();
@@ -389,7 +524,7 @@ export async function testNodeLatency(ip: string, port: number, timeoutMs = 2500
   };
 
   socket.setTimeout(timeoutMs);
-  socket.once("connect", () => cleanup(Date.now() - started));
+  socket.once("connect", () => cleanup(Math.max(1, Date.now() - started)));
   socket.once("timeout", () => cleanup(null));
   socket.once("error", () => cleanup(null));
 

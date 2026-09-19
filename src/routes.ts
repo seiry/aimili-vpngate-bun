@@ -1,235 +1,211 @@
+import { Hono } from "hono";
+import { basicAuth } from "hono/basic-auth";
+import { cors } from "hono/cors";
 import path from "node:path";
 import fs from "node:fs";
 import { config } from "./config.ts";
 import { getAllNodes, getNodeById, updateNodeLatency } from "./db.ts";
-import { refreshNodes, testNodeLatency } from "./fetcher.ts";
+import { refreshNodes, testNodeLatency, getSyncStatus } from "./fetcher.ts";
 import { vpnManager } from "./vpn.ts";
 import { proxyServer } from "./proxy.ts";
-import type { VpnNode } from "./types.ts";
 
-export async function handleRequest(req: Request): Promise<Response> {
-  const url = new URL(req.url);
-  const pathname = url.pathname;
+export const app = new Hono();
 
-  // JSON helper
-  const json = (data: unknown, status = 200) =>
-    new Response(JSON.stringify(data), {
-      status,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
+// 1. Enable CORS for all routes
+app.use("*", cors());
 
-  // CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      },
-    });
-  }
+// 2. Health check route (Exempt from auth for Coolify & Docker healthchecks)
+app.get("/api/health", (c) => {
+  return c.json({ status: "ok", timestamp: Date.now() });
+});
 
-  // Health check for Coolify & Docker (exempt from auth so healthcheck passes)
-  if (pathname === "/api/health") {
-    return json({ status: "ok", timestamp: Date.now() });
-  }
-
-  // Enforce HTTP Basic Auth for all management pages and APIs
+// 3. Enforce HTTP Basic Auth if enabled for all other routes
+app.use("*", async (c, next) => {
   if (config.uiAuthEnabled) {
-    const authHeader = req.headers.get("authorization");
-    let authorized = false;
-    if (authHeader && authHeader.toLowerCase().startsWith("basic ")) {
-      try {
-        const decoded = Buffer.from(authHeader.substring(6).trim(), "base64").toString("utf-8");
-        const [u, p] = decoded.split(":");
-        if (u === config.uiUser && p === config.uiPass) {
-          authorized = true;
-        }
-      } catch {
-        authorized = false;
-      }
-    }
-
-    if (!authorized) {
-      return new Response("401 Unauthorized: AimiliVPN Gate requires authentication.", {
-        status: 401,
-        headers: {
-          "WWW-Authenticate": 'Basic realm="AimiliVPN Gate"',
-          "Content-Type": "text/plain; charset=utf-8",
-        },
-      });
-    }
-  }
-  // Current VPN & Proxy status
-  if (pathname === "/api/status" && req.method === "GET") {
-    const vpnStatus = vpnManager.getStatus();
-    const proxyStats = proxyServer.getStats();
-    return json({
-      vpn: vpnStatus,
-      proxy: proxyStats,
-      config: {
-        uiPort: config.uiPort,
-        proxyPort: config.proxyPort,
-        proxyHost: config.proxyHost,
-        authEnabled: Boolean(config.proxyUser && config.proxyPass),
-      },
+    const auth = basicAuth({
+      username: config.uiUser || "admin",
+      password: config.uiPass || "",
+      realm: "AimiliVPN Gate",
     });
+    return auth(c, next);
+  }
+  return next();
+});
+
+// 4. Serve SPA index.html
+app.get("/", (c) => {
+  const indexPath = path.resolve("./public/index.html");
+  if (fs.existsSync(indexPath)) {
+    const html = fs.readFileSync(indexPath, "utf-8");
+    return c.html(html);
+  }
+  return c.text("AimiliVPN Gate UI not found", 404);
+});
+
+app.get("/index.html", (c) => {
+  const indexPath = path.resolve("./public/index.html");
+  if (fs.existsSync(indexPath)) {
+    const html = fs.readFileSync(indexPath, "utf-8");
+    return c.html(html);
+  }
+  return c.text("AimiliVPN Gate UI not found", 404);
+});
+
+// 5. REST APIs
+
+// Current VPN & Proxy status
+app.get("/api/status", (c) => {
+  const vpnStatus = vpnManager.getStatus();
+  const proxyStats = proxyServer.getStats();
+  const syncStatus = getSyncStatus();
+  return c.json({
+    vpn: vpnStatus,
+    proxy: proxyStats,
+    sync: syncStatus,
+    config: {
+      uiPort: config.uiPort,
+      proxyPort: config.proxyPort,
+      proxyHost: config.proxyHost,
+      authEnabled: Boolean(config.proxyUser && config.proxyPass),
+    },
+  });
+});
+
+// List nodes with filtering & sorting
+app.get("/api/nodes", (c) => {
+  const sslOnly = c.req.query("ssl_only") === "true";
+  const country = c.req.query("country");
+  const search = c.req.query("search")?.toLowerCase().trim();
+  const sortBy = c.req.query("sort") || "score";
+
+  let nodes = getAllNodes(sslOnly);
+
+  if (country && country !== "ALL") {
+    nodes = nodes.filter((n) => n.countryShort === country || n.countryZh === country);
   }
 
-  // List nodes with filtering & sorting
-  if (pathname === "/api/nodes" && req.method === "GET") {
-    const sslOnly = url.searchParams.get("ssl_only") === "true";
-    const country = url.searchParams.get("country");
-    const search = url.searchParams.get("search")?.toLowerCase().trim();
-    const sortBy = url.searchParams.get("sort") || "score";
-
-    let nodes = getAllNodes(sslOnly);
-
-    if (country && country !== "ALL") {
-      nodes = nodes.filter((n) => n.countryShort === country || n.countryZh === country);
-    }
-
-    if (search) {
-      nodes = nodes.filter(
-        (n) =>
-          n.ip.includes(search) ||
-          n.hostName.toLowerCase().includes(search) ||
-          n.countryZh.toLowerCase().includes(search) ||
-          n.countryLong.toLowerCase().includes(search) ||
-          n.operator.toLowerCase().includes(search)
-      );
-    }
-
-    if (sortBy === "ping") {
-      nodes.sort((a, b) => (a.latencyMs || a.ping) - (b.latencyMs || b.ping));
-    } else if (sortBy === "speed") {
-      nodes.sort((a, b) => b.speed - a.speed);
-    } else if (sortBy === "sessions") {
-      nodes.sort((a, b) => b.numVpnSessions - a.numVpnSessions);
-    } else {
-      nodes.sort((a, b) => b.score - a.score);
-    }
-
-    return json({
-      total: nodes.length,
-      sslCount: nodes.filter((n) => n.hasSslVpn).length,
-      nodes,
-    });
-  }
-
-  // Trigger manual node refresh
-  if (pathname === "/api/nodes/refresh" && req.method === "POST") {
-    const result = await refreshNodes();
-    return json(result);
-  }
-
-  // Connect to node
-  if (pathname.startsWith("/api/nodes/") && pathname.endsWith("/connect") && req.method === "POST") {
-    const parts = pathname.split("/");
-    const id = decodeURIComponent(parts[3]);
-    const node = getNodeById(id);
-    if (!node) {
-      return json({ success: false, error: "Node not found." }, 404);
-    }
-
-    // Run connection attempt in background / async
-    const connPromise = vpnManager.connect(node);
-    const timeoutPromise = new Promise<{ success: boolean; error?: string }>((r) =>
-      setTimeout(() => r({ success: true }), 4000)
+  if (search) {
+    nodes = nodes.filter(
+      (n) =>
+        n.ip.includes(search) ||
+        n.hostName.toLowerCase().includes(search) ||
+        n.countryZh.toLowerCase().includes(search) ||
+        n.countryLong.toLowerCase().includes(search) ||
+        n.operator.toLowerCase().includes(search)
     );
-    // Return early if taking time, or return actual result
-    const fastResult = await Promise.race([connPromise, timeoutPromise]);
-    return json({
-      success: true,
-      message: "Connection initiated",
-      initialState: vpnManager.getStatus().state,
-      node,
-    });
   }
 
-  // Test node latency
-  if (pathname.startsWith("/api/nodes/") && pathname.endsWith("/test") && req.method === "POST") {
-    const parts = pathname.split("/");
-    const id = decodeURIComponent(parts[3]);
-    const node = getNodeById(id);
-    if (!node) {
-      return json({ success: false, error: "Node not found." }, 404);
-    }
-
-    const testPort = node.sslVpnPort || node.openVpnPort || 443;
-    const latency = await testNodeLatency(node.ip, testPort, 3000);
-    updateNodeLatency(id, latency);
-
-    return json({
-      id,
-      ip: node.ip,
-      port: testPort,
-      latencyMs: latency,
-    });
+  if (sortBy === "ping") {
+    nodes.sort((a, b) => (a.latencyMs || a.ping) - (b.latencyMs || b.ping));
+  } else if (sortBy === "speed") {
+    nodes.sort((a, b) => b.speed - a.speed);
+  } else if (sortBy === "sessions") {
+    nodes.sort((a, b) => b.numVpnSessions - a.numVpnSessions);
+  } else {
+    nodes.sort((a, b) => b.score - a.score);
   }
 
-  // Disconnect
-  if (pathname === "/api/disconnect" && req.method === "POST") {
-    await vpnManager.disconnect();
-    return json({ success: true, state: "disconnected" });
+  return c.json({
+    total: nodes.length,
+    sslCount: nodes.filter((n) => n.hasSslVpn).length,
+    nodes,
+  });
+});
+
+// Trigger manual node refresh
+app.post("/api/nodes/refresh", async (c) => {
+  const result = await refreshNodes();
+  return c.json(result);
+});
+
+// Connect to node
+app.post("/api/nodes/:id/connect", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const node = getNodeById(id);
+  if (!node) {
+    return c.json({ success: false, error: "Node not found." }, 404);
   }
 
-  // Smart auto-connect to best SSL-VPN node
-  if (pathname === "/api/smart-connect" && req.method === "POST") {
-    const nodes = getAllNodes(true);
-    if (nodes.length === 0) {
-      return json({ success: false, error: "No SSL-VPN nodes available." }, 400);
-    }
+  // Initiate connection in background
+  const connPromise = vpnManager.connect(node);
+  const { promise: timeoutPromise, resolve: resolveTimeout } = Promise.withResolvers<{ success: boolean }>();
+  setTimeout(() => resolveTimeout({ success: true }), 4000);
 
-    // Find top candidate
-    let best = nodes[0];
-    for (const n of nodes.slice(0, 10)) {
-      if (config.preferredCountry && n.countryShort === config.preferredCountry) {
-        best = n;
-        break;
-      }
-    }
+  await Promise.race([connPromise, timeoutPromise]);
+  return c.json({
+    success: true,
+    message: "Connection initiated",
+    initialState: vpnManager.getStatus().state,
+    node,
+  });
+});
 
-    vpnManager.connect(best);
-    return json({
-      success: true,
-      message: `Connecting to best node: ${best.countryZh} (${best.ip})`,
-      node: best,
-    });
+// Test node direct latency
+app.post("/api/nodes/:id/test", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const node = getNodeById(id);
+  if (!node) {
+    return c.json({ success: false, error: "Node not found." }, 404);
   }
 
-  // Export Proxy config snippets
-  if (pathname === "/api/export" && req.method === "GET") {
-    const hostHeader = req.headers.get("host") || "127.0.0.1";
-    const serverIp = hostHeader.split(":")[0];
-    const proxyPort = config.proxyPort;
-    const auth = config.proxyUser && config.proxyPass ? `${config.proxyUser}:${config.proxyPass}@` : "";
+  const testPort = node.sslVpnPort || node.openVpnPort || 443;
+  const latency = await testNodeLatency(node.ip, testPort, 3000);
+  updateNodeLatency(id, latency);
 
-    return json({
-      socks5Url: `socks5://${auth}${serverIp}:${proxyPort}`,
-      socks5hUrl: `socks5h://${auth}${serverIp}:${proxyPort}`,
-      httpUrl: `http://${auth}${serverIp}:${proxyPort}`,
-      curlSocks: `curl --proxy socks5h://${auth}${serverIp}:${proxyPort} https://api.ipify.org`,
-      curlHttp: `curl -x http://${auth}${serverIp}:${proxyPort} https://api.ipify.org`,
-      shellEnv: `export all_proxy="socks5://${auth}${serverIp}:${proxyPort}"\nexport http_proxy="http://${auth}${serverIp}:${proxyPort}"\nexport https_proxy="http://${auth}${serverIp}:${proxyPort}"`,
-      pythonSnippet: `import requests\nproxies = {\n    'http': 'socks5h://${auth}${serverIp}:${proxyPort}',\n    'https': 'socks5h://${auth}${serverIp}:${proxyPort}',\n}\nres = requests.get('https://api.ipify.org', proxies=proxies)\nprint(res.text)`,
-    });
+  return c.json({
+    id,
+    ip: node.ip,
+    port: testPort,
+    latencyMs: latency,
+  });
+});
+
+// Disconnect
+app.post("/api/disconnect", async (c) => {
+  await vpnManager.disconnect();
+  return c.json({ success: true, state: "disconnected" });
+});
+
+// Smart auto-connect to best SSL-VPN node
+app.post("/api/smart-connect", async (c) => {
+  const nodes = getAllNodes(true);
+  if (nodes.length === 0) {
+    return c.json({ success: false, error: "No SSL-VPN nodes available." }, 400);
   }
 
-  // Serve static UI: public/index.html
-  if (pathname === "/" || pathname === "/index.html") {
-    const indexPath = path.resolve("./public/index.html");
-    if (fs.existsSync(indexPath)) {
-      const html = fs.readFileSync(indexPath, "utf-8");
-      return new Response(html, {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
+  let best = nodes[0];
+  for (const n of nodes.slice(0, 10)) {
+    if (config.preferredCountry && n.countryShort === config.preferredCountry) {
+      best = n;
+      break;
     }
   }
 
-  return new Response("Not Found", { status: 404 });
-}
+  vpnManager.connect(best);
+  return c.json({
+    success: true,
+    message: `Connecting to best node: ${best.countryZh} (${best.ip})`,
+    node: best,
+  });
+});
+
+// Export Proxy config snippets
+app.get("/api/export", (c) => {
+  const hostHeader = c.req.header("host") || "127.0.0.1";
+  const serverIp = hostHeader.split(":")[0];
+  const proxyPort = config.proxyPort;
+  const auth = config.proxyUser && config.proxyPass ? `${config.proxyUser}:${config.proxyPass}@` : "";
+
+  return c.json({
+    socks5Url: `socks5://${auth}${serverIp}:${proxyPort}`,
+    socks5hUrl: `socks5h://${auth}${serverIp}:${proxyPort}`,
+    httpUrl: `http://${auth}${serverIp}:${proxyPort}`,
+    curlSocks: `curl --proxy socks5h://${auth}${serverIp}:${proxyPort} https://api.ipify.org`,
+    curlHttp: `curl -x http://${auth}${serverIp}:${proxyPort} https://api.ipify.org`,
+    shellEnv: `export all_proxy="socks5://${auth}${serverIp}:${proxyPort}"\nexport http_proxy="http://${auth}${serverIp}:${proxyPort}"\nexport https_proxy="http://${auth}${serverIp}:${proxyPort}"`,
+    pythonSnippet: `import requests\nproxies = {\n    'http': 'socks5h://${auth}${serverIp}:${proxyPort}',\n    'https': 'socks5h://${auth}${serverIp}:${proxyPort}',\n}\nres = requests.get('https://api.ipify.org', proxies=proxies)\nprint(res.text)`,
+  });
+});
+
+// Backward compatibility helper
+export const handleRequest = (req: Request): Promise<Response> => app.fetch(req);

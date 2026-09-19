@@ -176,3 +176,25 @@ test("Direct web visit to proxy port routes to Web UI instead of 407", async () 
   client.on("error", reject);
   await promise;
 });
+test("When PROXY_USER is empty string, proxy auth is completely disabled", async () => {
+  const testPort = 19083;
+  const noAuthProxy = new ProxyServer({ user: "", pass: "" });
+  await noAuthProxy.start(testPort, "127.0.0.1");
+
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const client = net.connect({ host: "127.0.0.1", port: testPort });
+  client.once("connect", () => {
+    // Client offers ONLY method 0x00 (No auth)
+    client.write(Buffer.from([0x05, 0x01, 0x00]));
+  });
+
+  client.on("data", (data) => {
+    // Expect server to accept method 0x00 (No auth)
+    expect(data[0]).toBe(0x05);
+    expect(data[1]).toBe(0x00);
+    client.end();
+    noAuthProxy.stop().then(() => resolve());
+  });
+  client.on("error", reject);
+  await promise;
+});

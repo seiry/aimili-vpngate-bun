@@ -540,6 +540,7 @@
       </div>
     </div>
     <div class="header-actions">
+      <span id="syncBadge" style="font-size: 12px; color: var(--text-secondary); margin-right: 6px;">🔄 同步中...</span>
       <button class="btn btn-primary" onclick="openExportModal()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
         导出 SOCKS5
@@ -722,8 +723,26 @@
         const res = await fetch("/api/status");
         if (!res.ok) return;
         const data = await res.json();
+        // Update Sync status badge
+        if (data.sync) {
+          const s = data.sync;
+          const badge = document.getElementById("syncBadge");
+          if (badge) {
+            if (s.isSyncing) {
+              badge.innerHTML = `<span style="color: var(--warning);">⏳ 正在同步 VPNGate...</span>`;
+            } else if (s.lastSyncTime) {
+              const sec = Math.floor((Date.now() - s.lastSyncTime) / 1000);
+              let t = "刚刚";
+              if (sec >= 3600) t = `${Math.floor(sec / 3600)}小时前`;
+              else if (sec >= 60) t = `${Math.floor(sec / 60)}分钟前`;
+              else if (sec > 10) t = `${sec}秒前`;
+              badge.innerHTML = `<span>🔄 节点同步: ${t} (${s.intervalMinutes}m自动更新)</span>`;
+            } else {
+              badge.innerHTML = `<span>🔄 自动更新: 每${s.intervalMinutes}分钟</span>`;
+            }
+          }
+        }
 
-        // Update VPN status
         const vpn = data.vpn;
         const proxy = data.proxy;
         activeNodeId = vpn.activeNode ? vpn.activeNode.id : null;
@@ -918,10 +937,12 @@
     }
 
     async function refreshNodesList() {
+      const badge = document.getElementById("syncBadge");
+      if (badge) badge.innerHTML = `<span style="color: var(--warning);">⏳ 正在同步 VPNGate 节点...</span>`;
       try {
         const res = await fetch("/api/nodes/refresh", { method: "POST" });
         const data = await res.json();
-        alert(`已刷新节点！共获取 ${data.count || 0} 个节点（${data.sslCount || 0} 个 SSL-VPN）。`);
+        fetchStatus();
         loadNodes();
       } catch (e) {
         alert("刷新失败: " + e);

@@ -9,7 +9,9 @@
     "dev": "bun --watch src/index.ts",
     "test": "bun test"
   },
-  "dependencies": {},
+  "dependencies": {
+    "hono": "^4.13.8"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   }
