@@ -1,6 +1,6 @@
 FROM oven/bun:1-debian
 
-LABEL maintainer="AimiliVPN" \
+LABEL maintainer="Seiry" \
       description="VPNGate SSL-VPN to SOCKS5 Gateway powered by Bun"
 
 # Install OpenVPN, routing utilities and ca-certificates with BuildKit cache
@@ -24,10 +24,9 @@ COPY package.json tsconfig.json bun.lock* ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --production
 
-# Copy source code, frontend assets and bundled mirror
+# Copy source code and frontend assets
 COPY src ./src
 COPY public ./public
-COPY mirror ./mirror
 
 # Default environment configuration
 ENV NODE_ENV=production \
@@ -44,9 +43,9 @@ RUN mkdir -p /data
 
 VOLUME ["/data"]
 
-EXPOSE 8787/tcp 1080/tcp
+EXPOSE ${UI_PORT}/tcp ${PROXY_PORT}/tcp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -fs http://127.0.0.1:8787/api/health || exit 1
+    CMD curl -fs http://127.0.0.1:${UI_PORT:-8787}/api/health || exit 1
 
 CMD ["bun", "run", "src/index.ts"]

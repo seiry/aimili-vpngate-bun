@@ -297,21 +297,31 @@ export class VpnManager {
 
         if (wasConnected && !this.isIntentionalDisconnect && previousNode && !this.isRecovering) {
           this.isRecovering = true;
-          this.addLog("[Watchdog] Connection dropped unexpectedly. Attempting automatic recovery in 5s...");
+          this.addLog("[Watchdog] Connection dropped unexpectedly. Current link has failed.");
           setTimeout(async () => {
             try {
               if (this.state === "disconnected" || this.state === "error") {
-                this.addLog(`[Watchdog] Retrying node: ${previousNode.countryZh} (${previousNode.ip})...`);
-                const res = await this.connect(previousNode);
-                if (!res.success) {
-                  this.addLog(`[Watchdog] Reconnecting to ${previousNode.ip} failed. Attempting failover in ${previousNode.countryShort}...`);
-                  await this.reconnectFailover(previousNode.countryShort, previousNode.ip);
+                if (previousNode.ipType !== "residential") {
+                  this.addLog(
+                    `[Watchdog] Previous node (${previousNode.ip}) is not residential broadband (${previousNode.ipType || "unknown"}). Automatic failover only applies to residential broadband.`
+                  );
+                } else {
+                  this.addLog(
+                    `[Watchdog] Initiating automatic failover to next best residential node (excluding ${previousNode.ip})...`
+                  );
+                  const success = await this.reconnectFailover(
+                    config.preferredCountry || previousNode.countryShort,
+                    previousNode.ip
+                  );
+                  if (!success) {
+                    this.addLog(`[Watchdog] Failed to find or connect to next best residential node.`);
+                  }
                 }
               }
             } finally {
               this.isRecovering = false;
             }
-          }, 5000);
+          }, 2000);
         }
       });
       return await promise;
@@ -370,39 +380,30 @@ export class VpnManager {
     this.addLog("VPN disconnected.");
   }
   /**
-   * Automatic failover: finds the next best SSL-VPN node in the target country
+   * Automatic failover: finds the next best residential SSL-VPN node
+   * Requirements:
+   * 1. Only residential broadband nodes ("自动失效替换只会在家宽里")
+   * 2. Respect preferred country first ("首先要遵守当前的优先国家")
+   * 3. Exclude failed/dead node IP
+   * 4. Speed must not be too slow: threshold >= 50M ("主要是速度不能太低，低于50M的就太慢了")
+   * 5. Rank by 60% active sessions (fewer is better) + 40% speed ("活跃会话越少越好。活跃会话的因素占60% 网速占40%的因数")
    */
   async reconnectFailover(country?: string, excludeIp?: string): Promise<boolean> {
-    const allNodes = getAllNodes(true);
-    const nodes = excludeIp ? allNodes.filter((n) => n.ip !== excludeIp) : allNodes;
-    if (nodes.length === 0) return false;
-
-    const pref = country ? country.toUpperCase() : "";
-    let target: VpnNode | null = null;
-
-    if (pref) {
-      const prefRes = nodes.filter(
-        (n) => n.ipType === "residential" && (n.countryShort.toUpperCase() === pref || n.countryZh === pref)
-      );
-      target = prefRes.length > 0 ? prefRes[0] : null;
-      if (!target) {
-        const prefAny = nodes.filter(
-          (n) => n.countryShort.toUpperCase() === pref || n.countryZh === pref
-        );
-        target = prefAny.length > 0 ? prefAny[0] : null;
-      }
-    }
-
-    if (!target) {
-      const anyRes = nodes.filter((n) => n.ipType === "residential");
-      target = anyRes.length > 0 ? anyRes[0] : nodes[0];
-    }
+    const prefCountry = country || config.preferredCountry;
+    const target = findNextBestResidentialNode({
+      preferredCountry: prefCountry,
+      excludeIp,
+    });
 
     if (target) {
-      this.addLog(`[Failover] Reconnecting to backup node: ${target.countryZh} (${target.ip})...`);
+      this.addLog(
+        `[Failover] Found next best residential node: ${target.countryZh} (${target.ip}, ${target.speedFormatted}, ${target.numVpnSessions} sessions). Reconnecting...`
+      );
       const res = await this.connect(target);
       return res.success;
     }
+
+    this.addLog(`[Failover] No qualifying residential backup node found for country: ${prefCountry || "ANY"}`);
     return false;
   }
 
@@ -426,12 +427,24 @@ export class VpnManager {
         if (this.consecutiveHealthFailures >= 2 && !this.isRecovering) {
           this.isRecovering = true;
           const failedNode = this.activeNode;
-          this.addLog("[Watchdog] VPN tunnel traffic stalled (unable to reach Internet). Restarting session...");
+          this.addLog("[Watchdog] VPN tunnel traffic stalled (unable to reach Internet). Current link has failed.");
           this.stopHealthCheck();
           try {
             await this.disconnect(false);
             if (failedNode) {
-              await this.reconnectFailover(failedNode.countryShort, failedNode.ip);
+              if (failedNode.ipType !== "residential") {
+                this.addLog(
+                  `[Watchdog] Current node (${failedNode.ip}) is not residential broadband (${failedNode.ipType || "unknown"}). Automatic failover only applies to residential broadband.`
+                );
+              } else {
+                this.addLog(
+                  `[Watchdog] Initiating automatic failover to next best residential node (excluding ${failedNode.ip})...`
+                );
+                await this.reconnectFailover(
+                  config.preferredCountry || failedNode.countryShort,
+                  failedNode.ip
+                );
+              }
             }
           } finally {
             this.isRecovering = false;
@@ -509,6 +522,98 @@ export class VpnManager {
       this.addLog(`Failed to query egress IP: ${e}`);
     }
   }
+}
+
+export const MIN_RESIDENTIAL_SPEED_BPS = 50 * 1_000_000; // 50 Mbps (50M)
+
+/**
+ * Scores and ranks candidate residential nodes based on:
+ * - Active sessions (numVpnSessions): 60% weight (fewer is better)
+ * - Bandwidth (speed in bps): 40% weight (higher is better)
+ */
+export function rankResidentialNodes(candidates: VpnNode[]): VpnNode[] {
+  if (candidates.length <= 1) return [...candidates];
+
+  const maxSpeed = Math.max(...candidates.map((n) => Math.max(0, n.speed)));
+  const maxSessions = Math.max(...candidates.map((n) => Math.max(0, n.numVpnSessions)));
+
+  return [...candidates]
+    .map((node) => {
+      const speed = Math.max(0, node.speed);
+      const sessions = Math.max(0, node.numVpnSessions);
+      const speedScore = maxSpeed > 0 ? speed / maxSpeed : 1.0;
+      const sessionScore = maxSessions > 0 ? 1.0 - sessions / maxSessions : 1.0;
+      const compositeScore = 0.4 * speedScore + 0.6 * sessionScore;
+      return { node, compositeScore };
+    })
+    .sort((a, b) => {
+      if (b.compositeScore !== a.compositeScore) {
+        return b.compositeScore - a.compositeScore;
+      }
+      if (a.node.numVpnSessions !== b.node.numVpnSessions) {
+        return a.node.numVpnSessions - b.node.numVpnSessions;
+      }
+      return b.node.speed - a.node.speed;
+    })
+    .map((item) => item.node);
+}
+
+/**
+ * Selects the next best residential SSL-VPN node for automatic failover.
+ * Requirements:
+ * 1. Only residential nodes (ipType === "residential")
+ * 2. Exclude the failed/current node IP
+ * 3. Respect current preferred country first
+ * 4. Filter out nodes below 50M (speed >= 50 Mbps)
+ * 5. Rank by 60% active sessions (fewer is better) and 40% speed
+ */
+export function findNextBestResidentialNode(options: {
+  preferredCountry?: string;
+  excludeIp?: string;
+  allNodes?: VpnNode[];
+}): VpnNode | null {
+  const allNodes = options.allNodes || getAllNodes(true);
+  // Automatic failover is strictly limited to residential broadband
+  const residentialNodes = allNodes.filter(
+    (n) => n.ipType === "residential" && (!options.excludeIp || n.ip !== options.excludeIp)
+  );
+
+  if (residentialNodes.length === 0) {
+    return null;
+  }
+
+  const pref = (options.preferredCountry || config.preferredCountry || "").toUpperCase();
+
+  // Tier 1: Preferred country residential nodes with speed >= 50 Mbps
+  if (pref) {
+    const prefHighSpeed = residentialNodes.filter(
+      (n) =>
+        (n.countryShort.toUpperCase() === pref || n.countryZh.toUpperCase() === pref) &&
+        n.speed >= MIN_RESIDENTIAL_SPEED_BPS
+    );
+    if (prefHighSpeed.length > 0) {
+      return rankResidentialNodes(prefHighSpeed)[0];
+    }
+  }
+
+  // Tier 2: Other countries residential nodes with speed >= 50 Mbps
+  const anyHighSpeed = residentialNodes.filter((n) => n.speed >= MIN_RESIDENTIAL_SPEED_BPS);
+  if (anyHighSpeed.length > 0) {
+    return rankResidentialNodes(anyHighSpeed)[0];
+  }
+
+  // Tier 3: Preferred country residential nodes (if no node >= 50M exists anywhere)
+  if (pref) {
+    const prefAnySpeed = residentialNodes.filter(
+      (n) => n.countryShort.toUpperCase() === pref || n.countryZh.toUpperCase() === pref
+    );
+    if (prefAnySpeed.length > 0) {
+      return rankResidentialNodes(prefAnySpeed)[0];
+    }
+  }
+
+  // Tier 4: Fallback to best available residential node
+  return rankResidentialNodes(residentialNodes)[0];
 }
 
 export const vpnManager = new VpnManager();

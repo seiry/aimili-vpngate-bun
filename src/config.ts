@@ -55,8 +55,8 @@ if (!uiPass) {
   }
 }
 
-const rawProxyUser = process.env.LOCAL_PROXY_USER ?? process.env.PROXY_USER ?? "";
-const rawProxyPass = process.env.LOCAL_PROXY_PASS ?? process.env.PROXY_PASS ?? "";
+const rawProxyUser = process.env.PROXY_USER ?? process.env.LOCAL_PROXY_USER ?? "";
+const rawProxyPass = process.env.PROXY_PASS ?? process.env.LOCAL_PROXY_PASS ?? "";
 const proxyUser = rawProxyUser.trim().length > 0 ? rawProxyUser.trim() : undefined;
 const proxyPass = rawProxyPass.trim().length > 0 ? rawProxyPass.trim() : undefined;
 export const COUNTRY_NAMES: Record<string, string> = {
@@ -105,12 +105,12 @@ function resolveCountryCode(val: string): string {
 
 export const config: AppConfig = {
   uiHost: getEnv("UI_HOST", "0.0.0.0"),
-  uiPort: getEnvInt("UI_PORT", 8787),
+  uiPort: getEnvInt("UI_PORT", getEnvInt("PORT", 8787)),
   uiUser,
   uiPass,
   uiAuthEnabled: Boolean(uiUser && uiPass),
-  proxyHost: getEnv("LOCAL_PROXY_HOST", getEnv("PROXY_HOST", "0.0.0.0")),
-  proxyPort: getEnvInt("LOCAL_PROXY_PORT", getEnvInt("PROXY_PORT", 1080)),
+  proxyHost: getEnv("PROXY_HOST", getEnv("LOCAL_PROXY_HOST", "0.0.0.0")),
+  proxyPort: getEnvInt("PROXY_PORT", getEnvInt("LOCAL_PROXY_PORT", 1080)),
   proxyUser,
   proxyPass,
   dataDir,

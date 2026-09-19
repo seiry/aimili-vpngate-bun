@@ -452,24 +452,15 @@ export async function refreshNodes(): Promise<{ count: number; sslCount: number;
 
   let finalNodes = mergeNodes(htmlNodes, csvNodes);
 
-  // Fallback to local mirror file if network completely failed and DB is empty
+  // Fallback to local SQLite database cache if network fetch failed
   if (finalNodes.length === 0) {
     const localDbNodes = getAllNodes();
     if (localDbNodes.length > 0) {
-      console.log(`[Fetcher] Using ${localDbNodes.length} nodes from local database cache.`);
+      console.log(`[Fetcher] Network fetch failed. Using ${localDbNodes.length} nodes from local database cache.`);
       const sslCount = localDbNodes.filter((n) => n.hasSslVpn).length;
+      lastSyncTime = Date.now();
+      isSyncing = false;
       return { count: localDbNodes.length, sslCount };
-    }
-
-    const localMirrorPath = path.resolve("./mirror/vpngate.csv");
-    if (fs.existsSync(localMirrorPath)) {
-      try {
-        const fileContent = fs.readFileSync(localMirrorPath, "utf-8");
-        finalNodes = parseVpngateCsv(fileContent);
-        console.log(`[Fetcher] Loaded ${finalNodes.length} nodes from bundled mirror CSV.`);
-      } catch (fErr) {
-        console.error("[Fetcher] Error reading bundled mirror CSV:", fErr);
-      }
     }
   }
 

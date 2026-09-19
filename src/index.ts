@@ -51,7 +51,7 @@ if (config.autoReconnect && lastSession.enabled && lastSession.nodeId) {
       const res = await vpnManager.connect(savedNode);
       if (!res.success) {
         console.warn(`[AutoReconnect] Previous node ${savedNode.ip} failed to reconnect. Attempting failover in ${lastSession.country || config.preferredCountry}...`);
-        await vpnManager.reconnectFailover(lastSession.country || config.preferredCountry);
+        await vpnManager.reconnectFailover(lastSession.country || config.preferredCountry, savedNode.ip);
       }
     } else {
       console.warn(`[AutoReconnect] Previous node ${lastSession.nodeId} is no longer reachable. Failing over to best node in ${lastSession.country || config.preferredCountry}...`);

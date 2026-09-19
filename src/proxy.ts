@@ -13,8 +13,8 @@ export class ProxyServer {
   }
 
   private getAuth(): { user?: string; pass?: string } {
-    const rawUser = this.auth?.user ?? config.proxyUser ?? process.env.LOCAL_PROXY_USER ?? process.env.PROXY_USER ?? "";
-    const rawPass = this.auth?.pass ?? config.proxyPass ?? process.env.LOCAL_PROXY_PASS ?? process.env.PROXY_PASS ?? "";
+    const rawUser = this.auth?.user ?? config.proxyUser ?? process.env.PROXY_USER ?? process.env.LOCAL_PROXY_USER ?? "";
+    const rawPass = this.auth?.pass ?? config.proxyPass ?? process.env.PROXY_PASS ?? process.env.LOCAL_PROXY_PASS ?? "";
     const user = rawUser.trim().length > 0 ? rawUser.trim() : undefined;
     const pass = rawPass.trim().length > 0 ? rawPass.trim() : undefined;
     return { user, pass };

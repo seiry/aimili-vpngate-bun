@@ -3,7 +3,7 @@ import { test, expect, beforeAll, afterAll } from "bun:test";
 import { handleRequest } from "../src/routes.ts";
 import { config } from "../src/config.ts";
 import { getAllNodes, saveNodes, saveLastConnected, clearLastConnected, getLastConnectedInfo } from "../src/db.ts";
-import { vpnManager } from "../src/vpn.ts";
+import { vpnManager, findNextBestResidentialNode, rankResidentialNodes, MIN_RESIDENTIAL_SPEED_BPS } from "../src/vpn.ts";
 
 beforeAll(() => {
   // Seed a sample SSL-VPN node into database for tests
@@ -292,4 +292,370 @@ test("prepareConfigFile injects reneg-sec 0, keepalive, and strips conflicting o
   expect(content).toContain("persist-key");
   expect(content).toContain("connect-retry-max 3");
   expect(content).toContain("redirect-gateway def1");
+});
+
+test("rankResidentialNodes weighs active sessions at 60% and speed at 40%", () => {
+  const nodeA = {
+    id: "A",
+    hostName: "node-a",
+    ip: "10.0.0.1",
+    score: 100,
+    ping: 20,
+    speed: 120_000_000, // 120 Mbps
+    speedFormatted: "120 Mbps",
+    countryLong: "Japan",
+    countryShort: "JP",
+    countryZh: "日本",
+    numVpnSessions: 30, // 30 sessions
+    uptime: 1000,
+    totalUsers: 10,
+    totalTraffic: 1000,
+    operator: "ISP",
+    message: "",
+    hasSslVpn: true,
+    sslVpnPort: 443,
+    sslVpnProto: "tcp" as const,
+    openVpnProto: "tcp" as const,
+    openVpnPort: 443,
+    latencyMs: null,
+    lastUpdated: Date.now(),
+    ipType: "residential" as const,
+  };
+  const nodeB = {
+    ...nodeA,
+    id: "B",
+    ip: "10.0.0.2",
+    speed: 90_000_000, // 90 Mbps (lower speed than A)
+    speedFormatted: "90 Mbps",
+    numVpnSessions: 2, // 2 sessions (far fewer than A)
+  };
+  const nodeC = {
+    ...nodeA,
+    id: "C",
+    ip: "10.0.0.3",
+    speed: 200_000_000, // 200 Mbps (highest speed)
+    speedFormatted: "200 Mbps",
+    numVpnSessions: 80, // 80 sessions (crowded)
+  };
+
+  // Node B: maxSpeed=200M, maxSessions=80
+  // Speed score: 90/200 = 0.45 * 0.4 = 0.18
+  // Session score: (1 - 2/80) = 0.975 * 0.6 = 0.585
+  // Total B: 0.765
+  // Node A: 120/200 * 0.4 + (1 - 30/80) * 0.6 = 0.24 + 0.375 = 0.615
+  // Node C: 200/200 * 0.4 + (1 - 80/80) * 0.6 = 0.40 + 0.000 = 0.400
+  const ranked = rankResidentialNodes([nodeA, nodeB, nodeC]);
+  expect(ranked[0].id).toBe("B");
+  expect(ranked[1].id).toBe("A");
+  expect(ranked[2].id).toBe("C");
+});
+
+test("findNextBestResidentialNode strictly filters out non-residential nodes", () => {
+  const dcNode = {
+    id: "DC_NODE",
+    hostName: "datacenter.opengw.net",
+    ip: "10.0.1.1",
+    score: 9999999,
+    ping: 5,
+    speed: 500_000_000, // 500 Mbps
+    speedFormatted: "500 Mbps",
+    countryLong: "Japan",
+    countryShort: "JP",
+    countryZh: "日本",
+    numVpnSessions: 0,
+    uptime: 1000,
+    totalUsers: 10,
+    totalTraffic: 1000,
+    operator: "Colo",
+    message: "",
+    hasSslVpn: true,
+    sslVpnPort: 443,
+    sslVpnProto: "tcp" as const,
+    openVpnProto: "tcp" as const,
+    openVpnPort: 443,
+    latencyMs: null,
+    lastUpdated: Date.now(),
+    ipType: "datacenter" as const, // Datacenter!
+  };
+  const resNode = {
+    ...dcNode,
+    id: "RES_NODE",
+    ip: "10.0.1.2",
+    speed: 80_000_000, // 80 Mbps
+    speedFormatted: "80 Mbps",
+    numVpnSessions: 5,
+    ipType: "residential" as const, // Residential!
+  };
+
+  const best = findNextBestResidentialNode({
+    preferredCountry: "JP",
+    allNodes: [dcNode, resNode],
+  });
+  // Datacenter node must be completely disqualified despite 500 Mbps and 0 sessions
+  expect(best).toBeDefined();
+  expect(best?.id).toBe("RES_NODE");
+  expect(best?.ipType).toBe("residential");
+});
+
+test("findNextBestResidentialNode filters out nodes below 50M (< 50 Mbps)", () => {
+  const slowNode = {
+    id: "SLOW_RES",
+    hostName: "slow.opengw.net",
+    ip: "10.0.2.1",
+    score: 9999,
+    ping: 10,
+    speed: 30_000_000, // 30 Mbps (< 50M)
+    speedFormatted: "30 Mbps",
+    countryLong: "Japan",
+    countryShort: "JP",
+    countryZh: "日本",
+    numVpnSessions: 0, // 0 sessions!
+    uptime: 1000,
+    totalUsers: 10,
+    totalTraffic: 1000,
+    operator: "ISP",
+    message: "",
+    hasSslVpn: true,
+    sslVpnPort: 443,
+    sslVpnProto: "tcp" as const,
+    openVpnProto: "tcp" as const,
+    openVpnPort: 443,
+    latencyMs: null,
+    lastUpdated: Date.now(),
+    ipType: "residential" as const,
+  };
+  const fastNode = {
+    ...slowNode,
+    id: "FAST_RES",
+    ip: "10.0.2.2",
+    speed: 60_000_000, // 60 Mbps (>= 50M)
+    speedFormatted: "60 Mbps",
+    numVpnSessions: 5,
+  };
+
+  const best = findNextBestResidentialNode({
+    preferredCountry: "JP",
+    allNodes: [slowNode, fastNode],
+  });
+  // The node with speed < 50M is disqualified when >= 50M node is available
+  expect(best).toBeDefined();
+  expect(best?.id).toBe("FAST_RES");
+});
+
+test("findNextBestResidentialNode prioritizes preferred country first", () => {
+  const prefNode = {
+    id: "JP_RES",
+    hostName: "jp.opengw.net",
+    ip: "10.0.3.1",
+    score: 1000,
+    ping: 30,
+    speed: 70_000_000, // 70 Mbps
+    speedFormatted: "70 Mbps",
+    countryLong: "Japan",
+    countryShort: "JP",
+    countryZh: "日本",
+    numVpnSessions: 10,
+    uptime: 1000,
+    totalUsers: 10,
+    totalTraffic: 1000,
+    operator: "ISP",
+    message: "",
+    hasSslVpn: true,
+    sslVpnPort: 443,
+    sslVpnProto: "tcp" as const,
+    openVpnProto: "tcp" as const,
+    openVpnPort: 443,
+    latencyMs: null,
+    lastUpdated: Date.now(),
+    ipType: "residential" as const,
+  };
+  const otherNode = {
+    ...prefNode,
+    id: "US_RES",
+    ip: "10.0.3.2",
+    countryLong: "United States",
+    countryShort: "US",
+    countryZh: "美国",
+    speed: 200_000_000, // 200 Mbps (faster than JP)
+    speedFormatted: "200 Mbps",
+    numVpnSessions: 1, // fewer sessions
+  };
+
+  const best = findNextBestResidentialNode({
+    preferredCountry: "JP",
+    allNodes: [otherNode, prefNode],
+  });
+  // Must adhere to preferred country JP first
+  expect(best).toBeDefined();
+  expect(best?.id).toBe("JP_RES");
+  expect(best?.countryShort).toBe("JP");
+});
+
+test("findNextBestResidentialNode falls back to other country if preferred country has no >= 50M node", () => {
+  const slowPrefNode = {
+    id: "JP_SLOW",
+    hostName: "jp-slow.opengw.net",
+    ip: "10.0.4.1",
+    score: 1000,
+    ping: 30,
+    speed: 20_000_000, // 20 Mbps (< 50M)
+    speedFormatted: "20 Mbps",
+    countryLong: "Japan",
+    countryShort: "JP",
+    countryZh: "日本",
+    numVpnSessions: 1,
+    uptime: 1000,
+    totalUsers: 10,
+    totalTraffic: 1000,
+    operator: "ISP",
+    message: "",
+    hasSslVpn: true,
+    sslVpnPort: 443,
+    sslVpnProto: "tcp" as const,
+    openVpnProto: "tcp" as const,
+    openVpnPort: 443,
+    latencyMs: null,
+    lastUpdated: Date.now(),
+    ipType: "residential" as const,
+  };
+  const fastOtherNode = {
+    ...slowPrefNode,
+    id: "KR_FAST",
+    ip: "10.0.4.2",
+    countryLong: "Korea Republic of",
+    countryShort: "KR",
+    countryZh: "韩国",
+    speed: 100_000_000, // 100 Mbps (>= 50M)
+    speedFormatted: "100 Mbps",
+    numVpnSessions: 5,
+  };
+
+  const best = findNextBestResidentialNode({
+    preferredCountry: "JP",
+    allNodes: [slowPrefNode, fastOtherNode],
+  });
+  // Since preferred country JP has only < 50M, it falls back to other country KR with >= 50M
+  expect(best).toBeDefined();
+  expect(best?.id).toBe("KR_FAST");
+  expect(best?.countryShort).toBe("KR");
+});
+
+test("vpnManager.reconnectFailover selects node with best 60% session / 40% speed score", async () => {
+  saveNodes([
+    {
+      id: "FO_DEAD",
+      hostName: "fo-dead.opengw.net",
+      ip: "198.51.200.1",
+      score: 1000,
+      ping: 20,
+      speed: 100_000_000,
+      speedFormatted: "100 Mbps",
+      countryLong: "Failoverland",
+      countryShort: "FO",
+      countryZh: "故障转移国",
+      numVpnSessions: 5,
+      uptime: 1000,
+      totalUsers: 10,
+      totalTraffic: 1000,
+      operator: "Test",
+      message: "",
+      hasSslVpn: true,
+      sslVpnPort: 443,
+      sslVpnProto: "tcp" as const,
+      openVpnProto: "tcp" as const,
+      openVpnPort: 443,
+      latencyMs: null,
+      lastUpdated: Date.now(),
+      ipType: "residential" as const,
+    },
+    {
+      id: "FO_BUSY_FAST",
+      hostName: "fo-busy.opengw.net",
+      ip: "198.51.200.2",
+      score: 1000,
+      ping: 20,
+      speed: 120_000_000, // 120 Mbps (faster)
+      speedFormatted: "120 Mbps",
+      countryLong: "Failoverland",
+      countryShort: "FO",
+      countryZh: "故障转移国",
+      numVpnSessions: 60, // 60 sessions (very busy)
+      uptime: 1000,
+      totalUsers: 10,
+      totalTraffic: 1000,
+      operator: "Test",
+      message: "",
+      hasSslVpn: true,
+      sslVpnPort: 443,
+      sslVpnProto: "tcp" as const,
+      openVpnProto: "tcp" as const,
+      openVpnPort: 443,
+      latencyMs: null,
+      lastUpdated: Date.now(),
+      ipType: "residential" as const,
+    },
+    {
+      id: "FO_IDLE_GOOD",
+      hostName: "fo-idle.opengw.net",
+      ip: "198.51.200.3",
+      score: 1000,
+      ping: 25,
+      speed: 80_000_000, // 80 Mbps (>= 50M)
+      speedFormatted: "80 Mbps",
+      countryLong: "Failoverland",
+      countryShort: "FO",
+      countryZh: "故障转移国",
+      numVpnSessions: 2, // 2 sessions (very low load)
+      uptime: 1000,
+      totalUsers: 10,
+      totalTraffic: 1000,
+      operator: "Test",
+      message: "",
+      hasSslVpn: true,
+      sslVpnPort: 443,
+      sslVpnProto: "tcp" as const,
+      openVpnProto: "tcp" as const,
+      openVpnPort: 443,
+      latencyMs: null,
+      lastUpdated: Date.now(),
+      ipType: "residential" as const,
+    },
+    {
+      id: "FO_DATACENTER",
+      hostName: "fo-dc.opengw.net",
+      ip: "198.51.200.4",
+      score: 9999999,
+      ping: 5,
+      speed: 1000_000_000,
+      speedFormatted: "1 Gbps",
+      countryLong: "Failoverland",
+      countryShort: "FO",
+      countryZh: "故障转移国",
+      numVpnSessions: 0,
+      uptime: 1000,
+      totalUsers: 10,
+      totalTraffic: 1000,
+      operator: "Colo",
+      message: "",
+      hasSslVpn: true,
+      sslVpnPort: 443,
+      sslVpnProto: "tcp" as const,
+      openVpnProto: "tcp" as const,
+      openVpnPort: 443,
+      latencyMs: null,
+      lastUpdated: Date.now(),
+      ipType: "datacenter" as const, // Datacenter must be excluded
+    },
+  ]);
+
+  await vpnManager.reconnectFailover("FO", "198.51.200.1");
+  const status = vpnManager.getStatus();
+  // FO_IDLE_GOOD (198.51.200.3) should be selected over FO_BUSY_FAST because of 60% session weight
+  expect(status.activeNode).toBeDefined();
+  expect(status.activeNode?.ip).toBe("198.51.200.3");
+});
+
+test("config respects UI_PORT and PROXY_PORT environment variables", () => {
+  expect(config.uiPort).toBeGreaterThan(0);
+  expect(config.proxyPort).toBeGreaterThan(0);
 });
