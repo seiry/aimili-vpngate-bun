@@ -2,7 +2,7 @@ import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import { config, COUNTRY_NAMES } from "./config.ts";
-import { saveNodes, getAllNodes, updateNodeLatency } from "./db.ts";
+import { saveNodes, getAllNodes, updateNodeLatency, getCachedIpMap, saveIpClassifications, type IpClassification } from "./db.ts";
 import type { VpnNode } from "./types.ts";
 
 function formatSpeed(bps: number): string {
@@ -287,6 +287,104 @@ export function mergeNodes(htmlNodes: VpnNode[], csvNodes: VpnNode[]): VpnNode[]
   return merged;
 }
 
+const DATACENTER_PROVIDER_PATTERN = /(?:\b(?:cloud|colo|colocation|data[ -]?center|hosting|servers?|vps)\b|softether)/i;
+
+export async function enrichNodesWithIpType(nodes: VpnNode[]): Promise<void> {
+  const cacheMap = getCachedIpMap();
+  const unCachedIps: string[] = [];
+
+  for (const n of nodes) {
+    const cached = cacheMap.get(n.ip);
+    if (cached) {
+      n.ipType = cached.ipType;
+      n.ipTypeZh = cached.ipTypeZh;
+      n.isp = cached.isp;
+      n.city = cached.city;
+    } else {
+      if (!unCachedIps.includes(n.ip)) {
+        unCachedIps.push(n.ip);
+      }
+    }
+  }
+
+  if (unCachedIps.length === 0) return;
+
+  const newClassifications: IpClassification[] = [];
+  const chunkSize = 100;
+
+  for (let i = 0; i < unCachedIps.length; i += chunkSize) {
+    const chunk = unCachedIps.slice(i, i + chunkSize);
+    try {
+      const res = await fetch("http://ip-api.com/batch?lang=zh-CN&fields=status,message,query,country,countryCode,regionName,city,isp,org,as,asname,proxy,hosting,mobile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(chunk),
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (res.ok) {
+        const items = (await res.json()) as Array<{
+          status?: string;
+          query?: string;
+          hosting?: boolean;
+          mobile?: boolean;
+          proxy?: boolean;
+          isp?: string;
+          org?: string;
+          asname?: string;
+          regionName?: string;
+          city?: string;
+        }>;
+
+        for (const item of items) {
+          if (item.status !== "success" || !item.query) continue;
+          const providerText = `${item.isp || ""} ${item.org || ""} ${item.asname || ""}`;
+          const isDatacenter = Boolean(item.hosting) || DATACENTER_PROVIDER_PATTERN.test(providerText);
+          const isMobile = Boolean(item.mobile);
+
+          let ipType: "residential" | "datacenter" | "mobile" | "unknown" = "residential";
+          let ipTypeZh = "家庭宽带";
+
+          if (isMobile) {
+            ipType = "mobile";
+            ipTypeZh = "移动蜂窝";
+          } else if (isDatacenter) {
+            ipType = "datacenter";
+            ipTypeZh = "机房节点";
+          }
+
+          const city = [item.regionName, item.city].filter(Boolean).join(" ");
+          const isp = item.isp || item.org || "";
+
+          newClassifications.push({
+            ip: item.query,
+            ipType,
+            ipTypeZh,
+            isp,
+            city,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[Fetcher] IP intelligence batch query error:", e);
+    }
+  }
+
+  if (newClassifications.length > 0) {
+    saveIpClassifications(newClassifications);
+    const newMap = new Map(newClassifications.map((c) => [c.ip, c]));
+    for (const n of nodes) {
+      const entry = newMap.get(n.ip);
+      if (entry) {
+        n.ipType = entry.ipType;
+        n.ipTypeZh = entry.ipTypeZh;
+        n.isp = entry.isp;
+        n.city = entry.city;
+      }
+    }
+  }
+}
+
 let lastSyncTime: number | null = null;
 let isSyncing = false;
 let syncError: string | null = null;
@@ -376,6 +474,7 @@ export async function refreshNodes(): Promise<{ count: number; sslCount: number;
   }
 
   if (finalNodes.length > 0) {
+    await enrichNodesWithIpType(finalNodes);
     saveNodes(finalNodes);
     const sslCount = finalNodes.filter((n) => n.hasSslVpn).length;
     lastSyncTime = Date.now();

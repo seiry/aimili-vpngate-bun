@@ -427,10 +427,48 @@
       font-size: 11px;
     }
 
+    .badge-residential {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .badge-datacenter {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .badge-mobile {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
     .ping-good { color: #34d399; font-weight: 600; }
     .ping-medium { color: #fbbf24; font-weight: 600; }
     .ping-poor { color: #f87171; font-weight: 600; }
-
     /* Modal */
     .modal-backdrop {
       position: fixed;
@@ -596,7 +634,7 @@
       </div>
       <div>
         <button class="btn btn-sm btn-success" onclick="smartConnect()">
-          ⚡ 智能连接最佳 SSL-VPN 节点
+          ⚡ 智能连接最佳家宽 SSL-VPN
         </button>
       </div>
     </section>
@@ -604,11 +642,18 @@
     <!-- Filter & Controls -->
     <section class="controls-bar">
       <div class="tab-group">
-        <button class="tab-btn active" id="tabSsl" onclick="setSslFilter(true)">⭐ 仅看 SSL-VPN 节点</button>
-        <button class="tab-btn" id="tabAll" onclick="setSslFilter(false)">全部可用节点</button>
+        <button class="tab-btn active" id="tabResidential" onclick="setGroupFilter('residential')">🏠 ⭐ 精选家宽 (默认)</button>
+        <button class="tab-btn" id="tabDatacenter" onclick="setGroupFilter('datacenter')">🏢 机房节点</button>
+        <button class="tab-btn" id="tabAll" onclick="setGroupFilter('ALL')">全部节点</button>
       </div>
 
       <div class="filters">
+        <select id="ipTypeSelect" onchange="onIpTypeSelectChange()">
+          <option value="residential" selected>🏠 仅看家庭宽带 (默认)</option>
+          <option value="datacenter">🏢 仅看机房节点</option>
+          <option value="ALL">全部类型 (家庭/机房)</option>
+        </select>
+
         <select id="countrySelect" onchange="applyFilters()">
           <option value="ALL">全部国家</option>
           <option value="JP">🇯🇵 日本</option>
@@ -715,7 +760,7 @@
 
   <script>
     let currentSslOnly = true;
-    let allNodes = [];
+    let currentIpType = "residential";
     let activeNodeId = null;
 
     async function fetchStatus() {
@@ -810,17 +855,18 @@
 
     async function loadNodes() {
       try {
+        const ip_type = document.getElementById("ipTypeSelect").value;
         const country = document.getElementById("countrySelect").value;
         const sort = document.getElementById("sortSelect").value;
         const search = document.getElementById("searchInput").value;
 
         const params = new URLSearchParams({
           ssl_only: currentSslOnly ? "true" : "false",
+          ip_type,
           country,
           sort,
           search
         });
-
         const res = await fetch(`/api/nodes?${params.toString()}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -859,9 +905,14 @@
             <td>
               <div style="font-weight: 600; font-family: monospace;">${escapeHtml(n.ip)}</div>
               <div style="font-size: 12px; color: var(--text-secondary);">${escapeHtml(n.hostName)}</div>
+              ${n.isp ? `<div style="font-size: 11px; color: #a5b4fc; margin-top: 2px;">${escapeHtml(n.isp)}${n.city ? ' · ' + escapeHtml(n.city) : ''}</div>` : ''}
             </td>
-            <td>${sslBadge}</td>
             <td>
+              <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+                ${sslBadge}
+                ${n.ipType === 'residential' ? '<span class="badge-residential">🏠 家庭宽带</span>' : (n.ipType === 'datacenter' ? '<span class="badge-datacenter">🏢 机房节点</span>' : (n.ipType === 'mobile' ? '<span class="badge-mobile">📱 移动蜂窝</span>' : ''))}
+              </div>
+            </td>
               <div style="font-weight: 700; color: #818cf8;">${n.speedFormatted || "0 bps"}</div>
               <div class="${pingClass}">${pingVal} ms ${n.latencyMs ? "(实测)" : ""}</div>
             </td>
@@ -949,13 +1000,27 @@
       }
     }
 
-    function setSslFilter(sslOnly) {
-      currentSslOnly = sslOnly;
-      document.getElementById("tabSsl").className = "tab-btn " + (sslOnly ? "active" : "");
-      document.getElementById("tabAll").className = "tab-btn " + (!sslOnly ? "active" : "");
+    function setGroupFilter(type) {
+      currentIpType = type;
+      const sel = document.getElementById("ipTypeSelect");
+      if (sel) sel.value = type;
+
+      const tabs = {
+        residential: document.getElementById("tabResidential"),
+        datacenter: document.getElementById("tabDatacenter"),
+        ALL: document.getElementById("tabAll"),
+      };
+
+      for (const [k, el] of Object.entries(tabs)) {
+        if (el) el.className = "tab-btn " + (k === type ? "active" : "");
+      }
       loadNodes();
     }
 
+    function onIpTypeSelectChange() {
+      const type = document.getElementById("ipTypeSelect").value;
+      setGroupFilter(type);
+    }
     function applyFilters() {
       loadNodes();
     }

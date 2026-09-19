@@ -36,7 +36,20 @@ db.exec(`
     openvpn_link TEXT,
     latency_ms INTEGER,
     last_tested_at INTEGER,
-    last_updated INTEGER
+    last_updated INTEGER,
+    ip_type TEXT,
+    ip_type_zh TEXT,
+    isp TEXT,
+    city TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS ip_cache (
+    ip TEXT PRIMARY KEY,
+    ip_type TEXT,
+    ip_type_zh TEXT,
+    isp TEXT,
+    city TEXT,
+    cached_at INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS settings (
@@ -58,6 +71,20 @@ db.exec(`
     status TEXT
   );
 `);
+
+// Auto-migrate columns if table already existed without them
+try { db.exec("ALTER TABLE nodes ADD COLUMN ip_type TEXT;"); } catch {}
+try { db.exec("ALTER TABLE nodes ADD COLUMN ip_type_zh TEXT;"); } catch {}
+try { db.exec("ALTER TABLE nodes ADD COLUMN isp TEXT;"); } catch {}
+try { db.exec("ALTER TABLE nodes ADD COLUMN city TEXT;"); } catch {}
+
+export interface IpClassification {
+  ip: string;
+  ipType: "residential" | "datacenter" | "mobile" | "unknown";
+  ipTypeZh: string;
+  isp: string;
+  city: string;
+}
 
 interface NodeDbRow {
   id: string;
@@ -86,6 +113,10 @@ interface NodeDbRow {
   latency_ms: number | null;
   last_tested_at: number | null;
   last_updated: number;
+  ip_type: "residential" | "datacenter" | "mobile" | "unknown" | null;
+  ip_type_zh: string | null;
+  isp: string | null;
+  city: string | null;
 }
 
 const insertNodeStmt = db.prepare(`
@@ -95,14 +126,16 @@ const insertNodeStmt = db.prepare(`
     total_users, total_traffic, operator, message,
     has_ssl_vpn, ssl_vpn_port, ssl_vpn_proto,
     openvpn_config_base64, openvpn_proto, openvpn_port, openvpn_link,
-    latency_ms, last_tested_at, last_updated
+    latency_ms, last_tested_at, last_updated,
+    ip_type, ip_type_zh, isp, city
   ) VALUES (
     $id, $host_name, $ip, $score, $ping, $speed, $speed_formatted,
     $country_long, $country_short, $country_zh, $num_vpn_sessions, $uptime,
     $total_users, $total_traffic, $operator, $message,
     $has_ssl_vpn, $ssl_vpn_port, $ssl_vpn_proto,
     $openvpn_config_base64, $openvpn_proto, $openvpn_port, $openvpn_link,
-    $latency_ms, $last_tested_at, $last_updated
+    $latency_ms, $last_tested_at, $last_updated,
+    $ip_type, $ip_type_zh, $isp, $city
   )
 `);
 
@@ -136,6 +169,10 @@ export function saveNodes(nodes: VpnNode[]): void {
         $latency_ms: node.latencyMs,
         $last_tested_at: node.lastTestedAt || null,
         $last_updated: node.lastUpdated,
+        $ip_type: node.ipType || null,
+        $ip_type_zh: node.ipTypeZh || null,
+        $isp: node.isp || null,
+        $city: node.city || null,
       });
     }
   });
@@ -170,6 +207,10 @@ function rowToNode(r: NodeDbRow): VpnNode {
     latencyMs: r.latency_ms,
     lastTestedAt: r.last_tested_at || undefined,
     lastUpdated: r.last_updated,
+    ipType: r.ip_type || undefined,
+    ipTypeZh: r.ip_type_zh || undefined,
+    isp: r.isp || undefined,
+    city: r.city || undefined,
   };
 }
 
@@ -193,6 +234,48 @@ export function updateNodeLatency(id: string, latencyMs: number | null): void {
     Date.now(),
     id,
   ]);
+}
+
+export function getCachedIpMap(): Map<string, IpClassification> {
+  const rows = db.query("SELECT * FROM ip_cache").all() as Array<{
+    ip: string;
+    ip_type: "residential" | "datacenter" | "mobile" | "unknown";
+    ip_type_zh: string;
+    isp: string;
+    city: string;
+  }>;
+  const map = new Map<string, IpClassification>();
+  for (const r of rows) {
+    map.set(r.ip, {
+      ip: r.ip,
+      ipType: r.ip_type,
+      ipTypeZh: r.ip_type_zh,
+      isp: r.isp,
+      city: r.city,
+    });
+  }
+  return map;
+}
+
+export function saveIpClassifications(entries: IpClassification[]): void {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO ip_cache (ip, ip_type, ip_type_zh, isp, city, cached_at)
+    VALUES ($ip, $ip_type, $ip_type_zh, $isp, $city, $cached_at)
+  `);
+  const now = Date.now();
+  const tx = db.transaction((items: IpClassification[]) => {
+    for (const item of items) {
+      stmt.run({
+        $ip: item.ip,
+        $ip_type: item.ipType,
+        $ip_type_zh: item.ipTypeZh,
+        $isp: item.isp,
+        $city: item.city,
+        $cached_at: now,
+      });
+    }
+  });
+  tx(entries);
 }
 
 export function getSetting(key: string, defaultVal = ""): string {

@@ -76,9 +76,19 @@ app.get("/api/nodes", (c) => {
   const sslOnly = c.req.query("ssl_only") === "true";
   const country = c.req.query("country");
   const search = c.req.query("search")?.toLowerCase().trim();
+  const rawIpType = c.req.query("ip_type");
+  const ipType = rawIpType !== undefined ? rawIpType : "residential";
   const sortBy = c.req.query("sort") || "score";
 
   let nodes = getAllNodes(sslOnly);
+
+  if (ipType && ipType.toUpperCase() !== "ALL") {
+    const filtered = nodes.filter((n) => n.ipType === ipType);
+    // If filtered nodes exist, use them; if database is newly initialized and enrichment is still running, gracefully fallback
+    if (filtered.length > 0) {
+      nodes = filtered;
+    }
+  }
 
   if (country && country !== "ALL") {
     nodes = nodes.filter((n) => n.countryShort === country || n.countryZh === country);
@@ -108,6 +118,8 @@ app.get("/api/nodes", (c) => {
   return c.json({
     total: nodes.length,
     sslCount: nodes.filter((n) => n.hasSslVpn).length,
+    residentialCount: nodes.filter((n) => n.ipType === "residential").length,
+    datacenterCount: nodes.filter((n) => n.ipType === "datacenter").length,
     nodes,
   });
 });
@@ -166,15 +178,19 @@ app.post("/api/disconnect", async (c) => {
   return c.json({ success: true, state: "disconnected" });
 });
 
-// Smart auto-connect to best SSL-VPN node
+// Smart auto-connect to best SSL-VPN node (prioritizing residential nodes)
 app.post("/api/smart-connect", async (c) => {
   const nodes = getAllNodes(true);
   if (nodes.length === 0) {
     return c.json({ success: false, error: "No SSL-VPN nodes available." }, 400);
   }
 
-  let best = nodes[0];
-  for (const n of nodes.slice(0, 10)) {
+  // Prioritize residential nodes (家宽) first
+  const residentialNodes = nodes.filter((n) => n.ipType === "residential");
+  const candidates = residentialNodes.length > 0 ? residentialNodes : nodes;
+
+  let best = candidates[0];
+  for (const n of candidates.slice(0, 15)) {
     if (config.preferredCountry && n.countryShort === config.preferredCountry) {
       best = n;
       break;

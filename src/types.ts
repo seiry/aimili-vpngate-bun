@@ -28,6 +28,11 @@ export interface VpnNode {
   latencyMs: number | null;
   lastTestedAt?: number;
   lastUpdated: number;
+  // IP Classification (Residential vs Datacenter)
+  ipType?: "residential" | "datacenter" | "mobile" | "unknown";
+  ipTypeZh?: string;
+  isp?: string;
+  city?: string;
 }
 
 export type ConnectionState = "disconnected" | "connecting" | "connected" | "disconnecting" | "error";
