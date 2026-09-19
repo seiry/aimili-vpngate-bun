@@ -51,6 +51,15 @@ app.get("/index.html", (c) => {
   return c.text("AimiliVPN Gate UI not found", 404);
 });
 
+app.get("/vue.global.prod.js", (c) => {
+  const filePath = path.resolve("./public/vue.global.prod.js");
+  if (fs.existsSync(filePath)) {
+    return new Response(fs.readFileSync(filePath), {
+      headers: { "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "public, max-age=86400" },
+    });
+  }
+  return c.text("Not found", 404);
+});
 // 5. REST APIs
 
 // Current VPN & Proxy status

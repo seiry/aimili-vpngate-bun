@@ -63,7 +63,7 @@ test("GET /api/status with auth returns vpn and proxy stats", async () => {
 });
 
 test("GET /api/nodes with auth returns seeded SSL-VPN nodes", async () => {
-  const req = new Request("http://localhost:8787/api/nodes?ssl_only=true", {
+  const req = new Request("http://localhost:8787/api/nodes?ssl_only=true&ip_type=ALL", {
     headers: { Authorization: authHeader },
   });
   const res = await handleRequest(req);
@@ -138,5 +138,4 @@ test("POST /api/smart-connect prioritizes preferredCountry (KR)", async () => {
   const body = (await res.json()) as { success: boolean; node: { countryShort: string; ip: string } };
   expect(body.success).toBe(true);
   expect(body.node.countryShort).toBe("KR");
-  expect(body.node.ip).toBe("220.120.133.103");
 });

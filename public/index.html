@@ -4,6 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AimiliVPN Gate - SSL-VPN to SOCKS5 网关</title>
+  <script src="/vue.global.prod.js"></script>
+  <script>
+    if (typeof Vue === "undefined") {
+      document.write('<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"><\/script>');
+    }
+  </script>
   <style>
     :root {
       --bg-dark: #090d16;
@@ -19,14 +25,10 @@
       --success-gradient: linear-gradient(135deg, #34d399 0%, #059669 100%);
       --warning: #f59e0b;
       --danger: #ef4444;
-      --card-radius: 14px;
+      --card-radius: 12px;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       background-color: var(--bg-dark);
@@ -37,14 +39,15 @@
       color: var(--text-primary);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       min-height: 100vh;
-      padding-bottom: 60px;
+      padding-bottom: 70px;
     }
 
     /* Header */
     header {
-      padding: 16px 32px;
-      background: rgba(9, 13, 22, 0.9);
-      backdrop-filter: blur(12px);
+      padding: 12px 28px;
+      background: rgba(9, 13, 22, 0.92);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--border-color);
       display: flex;
       justify-content: space-between;
@@ -52,30 +55,26 @@
       position: sticky;
       top: 0;
       z-index: 100;
+      height: 60px;
     }
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
+    .brand { display: flex; align-items: center; gap: 12px; }
     .brand-logo {
-      width: 38px;
-      height: 38px;
+      width: 36px;
+      height: 36px;
       background: var(--primary-gradient);
-      border-radius: 10px;
+      border-radius: 9px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 20px;
+      font-size: 18px;
       color: white;
-      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
     }
 
     h1 {
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 700;
       background: linear-gradient(135deg, #c7d2fe 0%, #818cf8 100%);
       -webkit-background-clip: text;
@@ -83,26 +82,18 @@
       letter-spacing: -0.3px;
     }
 
-    .brand-sub {
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    .brand-sub { font-size: 11px; color: var(--text-secondary); }
+    .header-actions { display: flex; align-items: center; gap: 10px; }
 
     /* Buttons */
     .btn {
-      height: 36px;
-      padding: 0 16px;
+      height: 34px;
+      padding: 0 14px;
       border-radius: 8px;
       border: 1px solid var(--border-color);
       background: rgba(255, 255, 255, 0.05);
       color: var(--text-primary);
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
@@ -113,11 +104,13 @@
       text-decoration: none;
     }
 
-    .btn:hover {
+    .btn:hover:not(:disabled) {
       background: rgba(255, 255, 255, 0.1);
       border-color: rgba(255, 255, 255, 0.18);
       transform: translateY(-1px);
     }
+
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
     .btn-primary {
       background: var(--primary-gradient);
@@ -125,10 +118,7 @@
       color: white;
       box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
     }
-
-    .btn-primary:hover {
-      box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
-    }
+    .btn-primary:hover:not(:disabled) { box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4); }
 
     .btn-success {
       background: var(--success-gradient);
@@ -142,65 +132,61 @@
       border-color: rgba(239, 68, 68, 0.3);
       color: #f87171;
     }
+    .btn-danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.25); }
 
-    .btn-danger:hover {
-      background: rgba(239, 68, 68, 0.25);
-    }
+    .btn-sm { height: 28px; padding: 0 10px; font-size: 11.5px; border-radius: 6px; }
 
-    .btn-sm {
-      height: 28px;
-      padding: 0 10px;
-      font-size: 12px;
-      border-radius: 6px;
-    }
-
-    /* Container */
+    /* Main Container */
     .container {
       max-width: 1240px;
-      margin: 24px auto;
-      padding: 0 20px;
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+
+    /* Sticky Top Controls Zone */
+    .sticky-top-zone {
+      position: sticky;
+      top: 60px;
+      z-index: 90;
+      background: rgba(9, 13, 22, 0.94);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      padding: 10px 0 8px 0;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 8px;
     }
 
     /* Stats Grid */
     .stats-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
     }
 
     .stat-card {
       background: var(--bg-surface);
-      backdrop-filter: blur(10px);
       border: 1px solid var(--border-color);
-      border-radius: var(--card-radius);
-      padding: 18px 20px;
+      border-radius: 10px;
+      padding: 10px 14px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 4px;
       position: relative;
       overflow: hidden;
     }
 
-    .stat-card::before {
+    .stat-card.active { border-color: rgba(16, 185, 129, 0.4); }
+    .stat-card.active::before {
       content: "";
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: var(--border-color);
-    }
-
-    .stat-card.active::before {
+      top: 0; left: 0; right: 0; height: 2px;
       background: var(--success);
-      box-shadow: 0 0 12px var(--success);
+      box-shadow: 0 0 10px var(--success);
     }
 
     .stat-label {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -211,85 +197,60 @@
     }
 
     .stat-value {
-      font-size: 20px;
+      font-size: 16px;
       font-weight: 700;
       color: var(--text-primary);
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
 
-    .stat-desc {
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
+    .stat-desc { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .status-dot {
-      width: 10px;
-      height: 10px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
       background: #64748b;
       display: inline-block;
     }
+    .status-dot.connected { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .status-dot.connecting { background: var(--warning); box-shadow: 0 0 8px var(--warning); animation: pulse 1s infinite alternate; }
+    .status-dot.error { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
 
-    .status-dot.connected {
-      background: var(--success);
-      box-shadow: 0 0 10px var(--success);
-    }
-
-    .status-dot.connecting {
-      background: var(--warning);
-      box-shadow: 0 0 10px var(--warning);
-      animation: pulse 1s infinite alternate;
-    }
-
-    .status-dot.error {
-      background: var(--danger);
-      box-shadow: 0 0 10px var(--danger);
-    }
-
-    @keyframes pulse {
-      from { opacity: 0.4; }
-      to { opacity: 1; }
-    }
+    @keyframes pulse { from { opacity: 0.4; } to { opacity: 1; } }
 
     /* Proxy Banner */
     .proxy-banner {
       background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(16, 185, 129, 0.06) 100%);
       border: 1px solid var(--border-accent);
-      border-radius: var(--card-radius);
-      padding: 16px 20px;
+      border-radius: 10px;
+      padding: 8px 14px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 10px;
     }
 
-    .proxy-info {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
+    .proxy-info { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .proxy-tag {
       background: rgba(99, 102, 241, 0.2);
       color: #a5b4fc;
       border: 1px solid rgba(99, 102, 241, 0.3);
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 12px;
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-size: 11px;
       font-weight: 700;
     }
 
     .proxy-url {
       font-family: monospace;
-      font-size: 14px;
+      font-size: 13px;
       color: #f1f5f9;
       background: rgba(0, 0, 0, 0.3);
-      padding: 6px 12px;
-      border-radius: 6px;
+      padding: 4px 10px;
+      border-radius: 5px;
       border: 1px solid var(--border-color);
       user-select: all;
     }
@@ -310,7 +271,7 @@
     .tab-group {
       display: flex;
       background: rgba(0, 0, 0, 0.3);
-      padding: 3px;
+      padding: 2px;
       border-radius: 8px;
       border: 1px solid var(--border-color);
     }
@@ -319,9 +280,9 @@
       border: none;
       background: transparent;
       color: var(--text-secondary);
-      padding: 6px 14px;
+      padding: 5px 12px;
       border-radius: 6px;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -333,28 +294,20 @@
       box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
     }
 
-    .filters {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
     select, input[type="text"] {
-      height: 34px;
-      padding: 0 12px;
+      height: 32px;
+      padding: 0 10px;
       background: rgba(0, 0, 0, 0.3);
       border: 1px solid var(--border-color);
       border-radius: 6px;
       color: var(--text-primary);
-      font-size: 13px;
+      font-size: 12.5px;
       outline: none;
       transition: border-color 0.2s ease;
     }
-
-    select:focus, input[type="text"]:focus {
-      border-color: var(--primary);
-    }
+    select:focus, input[type="text"]:focus { border-color: var(--primary); }
 
     /* Node List Table */
     .nodes-container {
@@ -362,69 +315,53 @@
       border: 1px solid var(--border-color);
       border-radius: var(--card-radius);
       overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+      margin-top: 6px;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
-    }
-
+    table { width: 100%; border-collapse: collapse; text-align: left; }
     th {
-      background: rgba(12, 17, 29, 0.95);
-      padding: 12px 16px;
-      font-size: 12px;
+      background: rgba(12, 17, 29, 0.98);
+      padding: 10px 14px;
+      font-size: 11.5px;
       font-weight: 600;
       color: var(--text-secondary);
       border-bottom: 1px solid var(--border-color);
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
     }
 
     td {
-      padding: 14px 16px;
+      padding: 12px 14px;
       border-bottom: 1px solid var(--border-color);
       font-size: 13px;
       color: var(--text-primary);
       vertical-align: middle;
     }
 
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    tr:hover td {
-      background: var(--bg-surface-hover);
-    }
-
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg-surface-hover); }
     tr.active-row td {
       background: rgba(16, 185, 129, 0.08);
       border-top: 1px solid rgba(16, 185, 129, 0.3);
       border-bottom: 1px solid rgba(16, 185, 129, 0.3);
     }
 
+    /* Badges */
     .badge-ssl {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 3px;
       background: rgba(16, 185, 129, 0.15);
       color: #34d399;
       border: 1px solid rgba(16, 185, 129, 0.3);
-      padding: 3px 8px;
-      border-radius: 6px;
+      padding: 2px 7px;
+      border-radius: 5px;
       font-size: 11px;
       font-weight: 700;
-    }
-
-    .badge-other {
-      display: inline-flex;
-      align-items: center;
-      background: rgba(148, 163, 184, 0.1);
-      color: #94a3b8;
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-size: 11px;
     }
 
     .badge-residential {
@@ -469,81 +406,6 @@
     .ping-good { color: #34d399; font-weight: 600; }
     .ping-medium { color: #fbbf24; font-weight: 600; }
     .ping-poor { color: #f87171; font-weight: 600; }
-    /* Modal */
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(6px);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 200;
-      padding: 20px;
-    }
-
-    .modal {
-      background: #0f172a;
-      border: 1px solid var(--border-accent);
-      border-radius: 16px;
-      width: 100%;
-      max-width: 640px;
-      max-height: 90vh;
-      overflow-y: auto;
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-    }
-
-    .modal-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .modal-close {
-      background: transparent;
-      border: none;
-      color: var(--text-secondary);
-      font-size: 20px;
-      cursor: pointer;
-    }
-
-    .code-block {
-      background: #020617;
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 12px 14px;
-      font-family: monospace;
-      font-size: 13px;
-      color: #38bdf8;
-      white-space: pre-wrap;
-      word-break: break-all;
-      position: relative;
-    }
-
-    .copy-btn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-    }
-
-    /* Sticky Top Zone */
-    .sticky-top-zone {
-      position: sticky;
-      top: 64px;
-      z-index: 90;
-      background: rgba(9, 13, 22, 0.95);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      padding: 10px 0 12px 0;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-    }
 
     /* Floating Log Trigger Button */
     .floating-log-btn {
@@ -552,11 +414,11 @@
       bottom: 24px;
       z-index: 150;
       height: 42px;
-      padding: 0 18px;
+      padding: 0 16px;
       border-radius: 24px;
-      background: rgba(18, 25, 41, 0.92);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      background: rgba(18, 25, 41, 0.94);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border: 1px solid var(--border-accent);
       color: var(--text-primary);
       font-size: 13px;
@@ -568,7 +430,6 @@
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 14px rgba(99, 102, 241, 0.3);
       transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     }
-
     .floating-log-btn:hover {
       transform: translateY(-2px);
       border-color: var(--primary);
@@ -594,7 +455,7 @@
       font-weight: 700;
     }
 
-    /* Floating Side Drawer Backdrop */
+    /* Floating Side Drawer */
     .side-drawer-backdrop {
       position: fixed;
       inset: 0;
@@ -606,18 +467,11 @@
       pointer-events: none;
       transition: opacity 0.3s ease;
     }
+    .side-drawer-backdrop.open { opacity: 1; pointer-events: auto; }
 
-    .side-drawer-backdrop.open {
-      opacity: 1;
-      pointer-events: auto;
-    }
-
-    /* Floating Side Drawer Panel */
     .side-log-drawer {
       position: fixed;
-      top: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; right: 0; bottom: 0;
       width: 500px;
       max-width: 90vw;
       background: rgba(10, 14, 24, 0.98);
@@ -631,10 +485,7 @@
       transform: translateX(100%);
       transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
-
-    .side-log-drawer.open {
-      transform: translateX(0);
-    }
+    .side-log-drawer.open { transform: translateX(0); }
 
     .side-drawer-header {
       padding: 14px 18px;
@@ -644,12 +495,7 @@
       align-items: center;
       background: rgba(14, 20, 34, 0.9);
     }
-
-    .side-drawer-header h3 {
-      font-size: 13.5px;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
+    .side-drawer-header h3 { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
 
     .drawer-close-btn {
       background: transparent;
@@ -662,11 +508,7 @@
       border-radius: 4px;
       transition: all 0.2s ease;
     }
-
-    .drawer-close-btn:hover {
-      color: var(--text-primary);
-      background: rgba(255, 255, 255, 0.08);
-    }
+    .drawer-close-btn:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.08); }
 
     .side-drawer-terminal {
       flex: 1;
@@ -691,592 +533,710 @@
 
     .log-line-err { color: #f87171; }
     .log-line-ok { color: #34d399; }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 210;
+      padding: 20px;
+    }
+
+    .modal {
+      background: #0f172a;
+      border: 1px solid var(--border-accent);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 640px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-header { display: flex; justify-content: space-between; align-items: center; }
+    .modal-close { background: transparent; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; }
+    .code-block {
+      background: #020617;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-family: monospace;
+      font-size: 13px;
+      color: #38bdf8;
+      white-space: pre-wrap;
+      word-break: break-all;
+      position: relative;
+    }
+    .copy-btn { position: absolute; top: 8px; right: 8px; }
+
+    /* Spinner */
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
-
-  <header>
-    <div class="brand">
-      <div class="brand-logo">A</div>
-      <div>
-        <h1>AimiliVPN Gate (Bun)</h1>
-        <div class="brand-sub">VPNGate SSL-VPN to SOCKS5 代理网关</div>
-      </div>
-    </div>
-    <div class="header-actions">
-      <span id="syncBadge" style="font-size: 12px; color: var(--text-secondary); margin-right: 6px;">🔄 同步中...</span>
-      <button class="btn btn-primary" onclick="openExportModal()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-        导出 SOCKS5
-      </button>
-      <button class="btn" onclick="refreshNodesList()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-        刷新节点
-      </button>
-      <button class="btn btn-danger" id="btnDisconnect" onclick="disconnectVpn()" style="display: none;">
-        断开连接
-      </button>
-    </div>
-  </header>
-
-  <main class="container">
-
-    <!-- Sticky Top Controls Zone -->
-    <div class="sticky-top-zone">
-      <!-- Stats Grid -->
-      <section class="stats-grid">
-        <div class="stat-label">
-          <span class="status-dot" id="statusDot"></span>
-          网关状态
+  <div id="app">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="brand-logo">A</div>
+        <div>
+          <h1>AimiliVPN Gate (Bun)</h1>
+          <div class="brand-sub">VPNGate SSL-VPN to SOCKS5 代理网关 (Vue 3)</div>
         </div>
-        <div class="stat-value" id="statusText">正在获取...</div>
-        <div class="stat-desc" id="statusDesc">初始化中</div>
       </div>
-
-      <div class="stat-card" id="cardEgress">
-        <div class="stat-label">出口 IP & 地区</div>
-        <div class="stat-value" id="egressText">未连接</div>
-        <div class="stat-desc" id="egressDesc">流量直连当前 VPS</div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-label">当前协议</div>
-        <div class="stat-value" id="protocolText">SoftEther SSL-VPN</div>
-        <div class="stat-desc">TCP 443 / SSL 隧道转发</div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-label">代理流量统计</div>
-        <div class="stat-value" id="trafficText">0 B</div>
-        <div class="stat-desc" id="activeConnText">0 个并发客户端连接</div>
-      </div>
-    </section>
-
-    <!-- SOCKS5 Quick Banner -->
-    <section class="proxy-banner">
-      <div class="proxy-info">
-        <span class="proxy-tag">SOCKS5 代理</span>
-        <span class="proxy-url" id="proxyUrl">socks5://127.0.0.1:1080</span>
-        <button class="btn btn-sm" onclick="copyProxyUrl()">复制地址</button>
-      </div>
-      <div>
-        <button class="btn btn-sm btn-success" id="smartConnectBtn" onclick="smartConnect()">
-          ⚡ 智能连接最佳家宽 SSL-VPN
+      <div class="header-actions">
+        <span style="font-size: 12px; color: var(--text-secondary); margin-right: 6px;">
+          <span v-if="sync.isSyncing" style="color: var(--warning);">⏳ 正在同步 VPNGate...</span>
+          <span v-else>🔄 节点同步: {{ formatSyncTime }} ({{ sync.intervalMinutes }}m自动更新)</span>
+        </span>
+        <button class="btn btn-primary" @click="openExportModal">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          导出 SOCKS5
+        </button>
+        <button class="btn" @click="refreshNodesList" :disabled="sync.isSyncing">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          刷新节点
+        </button>
+        <button class="btn btn-danger" v-if="vpn.state === 'connected' || vpn.state === 'connecting'" @click="disconnectVpn">
+          断开连接
         </button>
       </div>
-    </section>
+    </header>
 
-    <!-- Filter & Controls -->
-    <section class="controls-bar">
-      <div class="tab-group">
-        <button class="tab-btn active" id="tabResidential" onclick="setGroupFilter('residential')">🏠 ⭐ 精选家宽 (默认)</button>
-        <button class="tab-btn" id="tabDatacenter" onclick="setGroupFilter('datacenter')">🏢 机房节点</button>
-        <button class="tab-btn" id="tabAll" onclick="setGroupFilter('ALL')">全部节点</button>
+    <main class="container">
+      <!-- Sticky Top Controls Zone (Cards + Proxy Banner + Filters) -->
+      <div class="sticky-top-zone">
+        <!-- 4 Stats Cards -->
+        <section class="stats-grid">
+          <div class="stat-card" :class="{ active: vpn.state === 'connected' }">
+            <div class="stat-label">
+              <span class="status-dot" :class="vpn.state"></span>
+              网关状态
+            </div>
+            <div class="stat-value">
+              <span v-if="vpn.state === 'connected'">已连接</span>
+              <span v-else-if="vpn.state === 'connecting'">连接中...</span>
+              <span v-else-if="vpn.state === 'error'">连接异常</span>
+              <span v-else>未连接</span>
+            </div>
+            <div class="stat-desc" :title="statusDesc">{{ statusDesc }}</div>
+          </div>
+
+          <div class="stat-card" :class="{ active: vpn.state === 'connected' }">
+            <div class="stat-label">出口 IP & 地区</div>
+            <div class="stat-value">{{ vpn.egressIp || '直连模式' }}</div>
+            <div class="stat-desc">
+              <span v-if="vpn.egressIp">{{ vpn.egressCountry || '未知' }} {{ vpn.egressIsp || '' }}</span>
+              <span v-else>尚未激活出口代理网关</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">当前协议</div>
+            <div class="stat-value">SoftEther SSL-VPN</div>
+            <div class="stat-desc">TCP 443 / SSL 隧道转发</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">代理流量统计</div>
+            <div class="stat-value">{{ formatBytes((proxy.bytesIn || 0) + (proxy.bytesOut || 0)) }}</div>
+            <div class="stat-desc">{{ proxy.activeConnections || 0 }} 个活跃连接 (累计 {{ proxy.totalConnections || 0 }})</div>
+          </div>
+        </section>
+
+        <!-- SOCKS5 Quick Banner -->
+        <section class="proxy-banner">
+          <div class="proxy-info">
+            <span class="proxy-tag">SOCKS5 代理</span>
+            <span class="proxy-url">{{ proxyDisplayUrl }}</span>
+            <button class="btn btn-sm" @click="copyProxyUrl">复制地址</button>
+          </div>
+          <div>
+            <button class="btn btn-sm btn-success" @click="smartConnect" :disabled="isSmartConnecting">
+              <span class="spinner" v-if="isSmartConnecting"></span>
+              <span>⚡ 智能连接最佳{{ config.preferredCountryZh || '家宽' }}节点</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Filter & Controls -->
+        <section class="controls-bar">
+          <div class="tab-group">
+            <button class="tab-btn" :class="{ active: currentIpType === 'residential' }" @click="setGroupFilter('residential')">
+              🏠 ⭐ 精选家宽 (默认)
+            </button>
+            <button class="tab-btn" :class="{ active: currentIpType === 'datacenter' }" @click="setGroupFilter('datacenter')">
+              🏢 机房节点
+            </button>
+            <button class="tab-btn" :class="{ active: currentIpType === 'ALL' }" @click="setGroupFilter('ALL')">
+              全部节点
+            </button>
+          </div>
+
+          <div class="filters">
+            <select v-model="currentIpType" @change="loadNodes">
+              <option value="residential">🏠 仅看家庭宽带 (默认)</option>
+              <option value="datacenter">🏢 仅看机房节点</option>
+              <option value="ALL">全部类型 (家庭/机房)</option>
+            </select>
+
+            <select v-model="selectedCountry" @change="onCountryChange">
+              <option value="ALL">全部国家</option>
+              <option value="JP">🇯🇵 日本</option>
+              <option value="KR">🇰🇷 韩国</option>
+              <option value="US">🇺🇸 美国</option>
+              <option value="GB">🇬🇧 英国</option>
+              <option value="SG">🇸🇬 新加坡</option>
+              <option value="TW">🇹🇼 台湾</option>
+              <option value="HK">🇭🇰 香港</option>
+            </select>
+
+            <select v-model="selectedSort" @change="loadNodes">
+              <option value="score">按综合质量排序</option>
+              <option value="speed">按带宽速度降序</option>
+              <option value="ping">按延迟低到高</option>
+              <option value="sessions">按会话数排序</option>
+            </select>
+
+            <input type="text" v-model="searchQuery" @input="loadNodes" placeholder="搜索 IP / 国家 / 主机名...">
+          </div>
+        </section>
       </div>
 
-      <div class="filters">
-        <select id="ipTypeSelect" onchange="onIpTypeSelectChange()">
-          <option value="residential" selected>🏠 仅看家庭宽带 (默认)</option>
-          <option value="datacenter">🏢 仅看机房节点</option>
-          <option value="ALL">全部类型 (家庭/机房)</option>
-        </select>
-
-        <select id="countrySelect" onchange="userChangedCountry = true; applyFilters()">
-          <option value="ALL">全部国家</option>
-          <option value="JP">🇯🇵 日本</option>
-          <option value="KR">🇰🇷 韩国</option>
-          <option value="US">🇺🇸 美国</option>
-          <option value="GB">🇬🇧 英国</option>
-          <option value="SG">🇸🇬 新加坡</option>
-          <option value="TW">🇹🇼 台湾</option>
-          <option value="HK">🇭🇰 香港</option>
-        </select>
-
-        <select id="sortSelect" onchange="applyFilters()">
-          <option value="score">按综合质量排序</option>
-          <option value="speed">按带宽速度降序</option>
-          <option value="ping">按延迟低到高</option>
-          <option value="sessions">按会话数排序</option>
-        </select>
-
-        <input type="text" id="searchInput" placeholder="搜索 IP / 国家 / 主机名..." oninput="applyFilters()">
-      </div>
+      <!-- Nodes Table -->
+      <section class="nodes-container">
+        <table>
+          <thead>
+            <tr>
+              <th>国家 / 地区</th>
+              <th>DDNS 主机名 / IP 地址</th>
+              <th>协议支持</th>
+              <th>线路质量 (速度 / 延时)</th>
+              <th>会话与运行时间</th>
+              <th style="text-align: right;">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="isLoading">
+              <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <span class="spinner" style="border-color: rgba(99,102,241,0.3); border-top-color: #6366f1; width: 20px; height: 20px;"></span>
+                <div style="margin-top: 8px;">正在加载节点数据...</div>
+              </td>
+            </tr>
+            <tr v-else-if="nodes.length === 0">
+              <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                没有找到符合条件的节点
+              </td>
+            </tr>
+            <tr v-for="node in nodes" :key="node.id" :class="{ 'active-row': activeNodeId === node.id }">
+              <td>
+                <div style="font-weight: 700; font-size: 13.5px;">{{ node.countryZh }}</div>
+                <div style="font-size: 11.5px; color: var(--text-secondary);">{{ node.countryLong }} ({{ node.countryShort }})</div>
+              </td>
+              <td>
+                <div style="font-weight: 600; font-family: monospace;">{{ node.ip }}</div>
+                <div style="font-size: 11.5px; color: var(--text-secondary);">{{ node.hostName }}</div>
+                <div v-if="node.isp" style="font-size: 11px; color: #a5b4fc; margin-top: 2px;">
+                  {{ node.isp }}{{ node.city ? ' · ' + node.city : '' }}
+                </div>
+              </td>
+              <td>
+                <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+                  <span class="badge-ssl">SSL-VPN TCP {{ node.sslVpnPort || 443 }}</span>
+                  <span v-if="node.ipType === 'residential'" class="badge-residential">🏠 家庭宽带</span>
+                  <span v-else-if="node.ipType === 'datacenter'" class="badge-datacenter">🏢 机房节点</span>
+                  <span v-else-if="node.ipType === 'mobile'" class="badge-mobile">📱 移动蜂窝</span>
+                </div>
+              </td>
+              <td>
+                <div style="font-weight: 700; color: #818cf8;">{{ node.speedFormatted || '0 bps' }}</div>
+                <div :class="getPingClass(node.latencyMs || node.ping)">
+                  {{ node.latencyMs || node.ping }} ms
+                  <span v-if="node.latencyMs" style="font-size: 10px;">(直测)</span>
+                </div>
+              </td>
+              <td>
+                <div>{{ node.numVpnSessions }} 个活跃会话</div>
+                <div style="font-size: 11.5px; color: var(--text-secondary);">{{ Math.round(node.uptime / 86400) }} 天运行</div>
+              </td>
+              <td style="text-align: right;">
+                <div style="display: inline-flex; gap: 6px;">
+                  <button class="btn btn-sm" @click="testNode(node.id)" :disabled="testingNodeIds.has(node.id)">
+                    <span v-if="testingNodeIds.has(node.id)" class="spinner"></span>
+                    <span v-else>测速</span>
+                  </button>
+                  <button
+                    class="btn btn-sm"
+                    :class="activeNodeId === node.id ? 'btn-success' : 'btn-primary'"
+                    @click="connectNode(node.id)"
+                    :disabled="connectingNodeId === node.id"
+                  >
+                    <span v-if="connectingNodeId === node.id" class="spinner"></span>
+                    <span v-else>{{ activeNodeId === node.id ? '已连接' : '连接' }}</span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </section>
-    </div>
+    </main>
 
-    <!-- Nodes Table -->
-    <section class="nodes-container">
-      <table>
-        <thead>
-          <tr>
-            <th>国家 / 地区</th>
-            <th>DDNS 主机名 / IP 地址</th>
-            <th>协议支持</th>
-            <th>线路质量 (速度 / 延时)</th>
-            <th>会话与运行时间</th>
-            <th style="text-align: right;">操作</th>
-          </tr>
-        </thead>
-        <tbody id="nodesTableBody">
-          <tr>
-            <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-              正在加载节点列表...
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
+    <!-- Floating Log Toggle Button (Fixed Bottom-Right) -->
+    <button class="floating-log-btn" @click="toggleLogDrawer(!logDrawerOpen)" title="查看实时运行日志">
+      <span class="pulse-dot"></span>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="4 17 10 11 4 5"></polyline>
+        <line x1="12" y1="19" x2="20" y2="19"></line>
+      </svg>
+      <span>运行日志</span>
+      <span class="log-count-badge">{{ vpn.logs.length }}</span>
+    </button>
 
+    <!-- Floating Side Drawer Backdrop -->
+    <div class="side-drawer-backdrop" :class="{ open: logDrawerOpen }" @click="toggleLogDrawer(false)"></div>
 
-  </main>
-
-  <!-- Export Modal -->
-  <div class="modal-backdrop" id="exportModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>SOCKS5 代理导出与使用示例</h2>
-        <button class="modal-close" onclick="closeExportModal()">&times;</button>
-      </div>
-
-      <p style="font-size: 13px; color: var(--text-secondary);">
-        当前节点已建立 SSL-VPN 隧道，所有连接到本 SOCKS5 / HTTP 代理端口的流量均经由远端出口节点加密穿透。
-      </p>
-
-      <div>
-        <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px;">SOCKS5h (远程 DNS 解析防泄漏):</div>
-        <div class="code-block">
-          <span id="exportSocks5">socks5h://127.0.0.1:1080</span>
-          <button class="btn btn-sm copy-btn" onclick="copyText('exportSocks5')">复制</button>
+    <!-- Floating Side Drawer Panel -->
+    <aside class="side-log-drawer" :class="{ open: logDrawerOpen }">
+      <div class="side-drawer-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="pulse-dot"></span>
+          <h3>实时运行日志 (OpenVPN & Proxy)</h3>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="btn btn-sm" @click="clearLogs">清空</button>
+          <button class="drawer-close-btn" @click="toggleLogDrawer(false)">&times;</button>
         </div>
       </div>
-
-      <div>
-        <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px;">HTTP / HTTPS 代理:</div>
-        <div class="code-block">
-          <span id="exportHttp">http://127.0.0.1:1080</span>
-          <button class="btn btn-sm copy-btn" onclick="copyText('exportHttp')">复制</button>
-        </div>
+      <div class="side-drawer-terminal" id="terminalLogs">
+        <div v-if="vpn.logs.length === 0" style="color: #64748b;">等待日志事件...</div>
+        <div
+          v-for="(log, idx) in vpn.logs"
+          :key="idx"
+          :class="{
+            'log-line-err': log.includes('[ERR]') || log.includes('AUTH_FAILED') || log.includes('fatal error'),
+            'log-line-ok': log.includes('Initialization Sequence Completed') || log.includes('Verified public egress')
+          }"
+        >{{ log }}</div>
       </div>
-
-      <div>
-        <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px;">cURL 命令行测试:</div>
-        <div class="code-block">
-          <span id="exportCurl">curl --proxy socks5h://127.0.0.1:1080 https://api.ipify.org</span>
-          <button class="btn btn-sm copy-btn" onclick="copyText('exportCurl')">复制</button>
-        </div>
+      <div class="side-drawer-footer">
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); cursor: pointer;">
+          <input type="checkbox" v-model="autoScrollLogs"> 自动滚动到底部
+        </label>
+        <span style="font-size: 11px; color: var(--text-secondary);">{{ vpn.logs.length }} 条日志</span>
       </div>
+    </aside>
 
-      <div>
-        <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px;">Linux Shell 环境变量:</div>
-        <div class="code-block">
-          <span id="exportShell">export all_proxy="socks5://127.0.0.1:1080"</span>
-          <button class="btn btn-sm copy-btn" onclick="copyText('exportShell')">复制</button>
+    <!-- Export Modal -->
+    <div class="modal-backdrop" v-if="exportModalOpen" @click.self="exportModalOpen = false">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>SOCKS5 代理导出与使用示例</h2>
+          <button class="modal-close" @click="exportModalOpen = false">&times;</button>
+        </div>
+
+        <p style="font-size: 13px; color: var(--text-secondary);">
+          当前节点已建立 SSL-VPN 隧道，所有连接到本 SOCKS5 / HTTP 代理端口的流量均经由远端出口节点加密穿透。
+        </p>
+
+        <div>
+          <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px;">SOCKS5h (远程 DNS 解析防泄漏):</div>
+          <div class="code-block">
+            <span>{{ exportData.socks5hUrl }}</span>
+            <button class="btn btn-sm copy-btn" @click="copyText(exportData.socks5hUrl)">复制</button>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px;">HTTP / HTTPS 代理:</div>
+          <div class="code-block">
+            <span>{{ exportData.httpUrl }}</span>
+            <button class="btn btn-sm copy-btn" @click="copyText(exportData.httpUrl)">复制</button>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px;">cURL 命令行测试:</div>
+          <div class="code-block">
+            <span>{{ exportData.curlSocks }}</span>
+            <button class="btn btn-sm copy-btn" @click="copyText(exportData.curlSocks)">复制</button>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size: 12px; font-weight: 600; margin-bottom: 6px;">Linux Shell 环境变量:</div>
+          <div class="code-block">
+            <span>{{ exportData.shellEnv }}</span>
+            <button class="btn btn-sm copy-btn" @click="copyText(exportData.shellEnv)">复制</button>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    let currentSslOnly = true;
-    let currentIpType = "residential";
-    let userChangedCountry = false;
-    let activeNodeId = null;
+    const { createApp, ref, reactive, computed, onMounted, onUnmounted, nextTick } = Vue;
 
-    async function fetchStatus() {
-      try {
-        const res = await fetch("/api/status");
-        if (!res.ok) return;
-        const data = await res.json();
-        // Update Sync status badge
-        if (data.sync) {
-          const s = data.sync;
-          const badge = document.getElementById("syncBadge");
-          if (badge) {
-            if (s.isSyncing) {
-              badge.innerHTML = `<span style="color: var(--warning);">⏳ 正在同步 VPNGate...</span>`;
-            } else if (s.lastSyncTime) {
-              const sec = Math.floor((Date.now() - s.lastSyncTime) / 1000);
-              let t = "刚刚";
-              if (sec >= 3600) t = `${Math.floor(sec / 3600)}小时前`;
-              else if (sec >= 60) t = `${Math.floor(sec / 60)}分钟前`;
-              else if (sec > 10) t = `${sec}秒前`;
-              badge.innerHTML = `<span>🔄 节点同步: ${t} (${s.intervalMinutes}m自动更新)</span>`;
-            } else {
-              badge.innerHTML = `<span>🔄 自动更新: 每${s.intervalMinutes}分钟</span>`;
-            }
+    createApp({
+      setup() {
+        const vpn = reactive({
+          state: "disconnected",
+          activeNode: null,
+          egressIp: null,
+          egressCountry: null,
+          egressIsp: null,
+          uptimeSeconds: 0,
+          lastError: null,
+          logs: [],
+        });
+
+        const proxy = reactive({
+          host: "0.0.0.0",
+          port: 1080,
+          activeConnections: 0,
+          totalConnections: 0,
+          bytesIn: 0,
+          bytesOut: 0,
+        });
+
+        const config = reactive({
+          uiPort: 8787,
+          proxyPort: 1080,
+          preferredCountry: "JP",
+          preferredCountryZh: "日本",
+        });
+
+        const sync = reactive({
+          lastSyncTime: null,
+          isSyncing: false,
+          intervalMinutes: 30,
+        });
+
+        const nodes = ref([]);
+        const isLoading = ref(true);
+        const currentIpType = ref("residential"); // Default to residential (家宽)
+        const selectedCountry = ref("ALL");
+        const userHasChangedCountry = ref(false);
+        const selectedSort = ref("score");
+        const searchQuery = ref("");
+        const testingNodeIds = ref(new Set());
+        const connectingNodeId = ref(null);
+        const isSmartConnecting = ref(false);
+
+        const logDrawerOpen = ref(false);
+        const autoScrollLogs = ref(true);
+        const exportModalOpen = ref(false);
+        const exportData = reactive({
+          socks5Url: "",
+          socks5hUrl: "",
+          httpUrl: "",
+          curlSocks: "",
+          shellEnv: "",
+        });
+
+        let statusTimer = null;
+
+        const activeNodeId = computed(() => vpn.activeNode?.id || null);
+
+        const statusDesc = computed(() => {
+          if (vpn.state === "connected") {
+            return `已连接 ${vpn.uptimeSeconds}s | 节点: ${vpn.activeNode?.countryZh || ""}`;
           }
-        }
+          if (vpn.state === "connecting") {
+            return `正在建立 SSL-VPN 隧道 (${vpn.activeNode?.ip || ""})`;
+          }
+          if (vpn.state === "error") {
+            return vpn.lastError || "发生错误";
+          }
+          return "请从下方节点列表选择一个连接";
+        });
 
-        const vpn = data.vpn;
-        const proxy = data.proxy;
-        activeNodeId = vpn.activeNode ? vpn.activeNode.id : null;
+        const proxyDisplayUrl = computed(() => {
+          const host = window.location.hostname || "127.0.0.1";
+          const port = config.proxyPort || 1080;
+          return `socks5://${host}:${port}`;
+        });
 
-        const dot = document.getElementById("statusDot");
-        const statusText = document.getElementById("statusText");
-        const statusDesc = document.getElementById("statusDesc");
-        const btnDisconnect = document.getElementById("btnDisconnect");
+        const formatSyncTime = computed(() => {
+          if (!sync.lastSyncTime) return "刚刚";
+          const sec = Math.floor((Date.now() - sync.lastSyncTime) / 1000);
+          if (sec >= 3600) return `${Math.floor(sec / 3600)}小时前`;
+          if (sec >= 60) return `${Math.floor(sec / 60)}分钟前`;
+          if (sec > 10) return `${sec}秒前`;
+          return "刚刚";
+        });
 
-        dot.className = "status-dot " + vpn.state;
+        const formatBytes = (bytes) => {
+          if (!bytes || bytes <= 0) return "0 B";
+          if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + " GB";
+          if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + " MB";
+          if (bytes >= 1024) return (bytes / 1024).toFixed(2) + " KB";
+          return bytes + " B";
+        };
 
-        if (vpn.state === "connected") {
-          statusText.textContent = "已连接";
-          statusDesc.textContent = `已连接 ${vpn.uptimeSeconds}s | 节点: ${vpn.activeNode?.countryZh || ""}`;
-          btnDisconnect.style.display = "inline-flex";
-        } else if (vpn.state === "connecting") {
-          statusText.textContent = "正在连接...";
-          statusDesc.textContent = `正在建立 SSL-VPN 隧道 (${vpn.activeNode?.ip || ""})`;
-          btnDisconnect.style.display = "inline-flex";
-        } else if (vpn.state === "error") {
-          statusText.textContent = "连接异常";
-          statusDesc.textContent = vpn.lastError || "发生错误";
-          btnDisconnect.style.display = "none";
-        } else {
-          statusText.textContent = "未连接";
-          statusDesc.textContent = "请从下方节点列表选择一个连接";
-          btnDisconnect.style.display = "none";
-        }
+        const getPingClass = (val) => {
+          if (!val || val <= 0) return "";
+          if (val < 100) return "ping-good";
+          if (val <= 200) return "ping-medium";
+          return "ping-poor";
+        };
 
-        // Update egress IP
-        const egressText = document.getElementById("egressText");
-        const egressDesc = document.getElementById("egressDesc");
-        if (vpn.egressIp) {
-          egressText.textContent = vpn.egressIp;
-          egressDesc.textContent = `${vpn.egressCountry || "未知"} ${vpn.egressIsp || ""}`;
-        } else {
-          egressText.textContent = "直连模式";
-          egressDesc.textContent = "尚未激活出口代理网关";
-        }
+        const apiFetch = (urlPath, options) => {
+          const p = urlPath.startsWith("/") ? urlPath : "/" + urlPath;
+          const fullUrl = `${window.location.protocol}//${window.location.host}${p}`;
+          return fetch(fullUrl, options);
+        };
 
-        // Update traffic
-        const totalBytes = (proxy.bytesIn || 0) + (proxy.bytesOut || 0);
-        document.getElementById("trafficText").textContent = formatBytes(totalBytes);
-        document.getElementById("activeConnText").textContent = `${proxy.activeConnections || 0} 个活跃连接 (累计 ${proxy.totalConnections || 0})`;
+        const fetchStatus = async () => {
+          try {
+            const res = await apiFetch("/api/status");
+            if (!res.ok) return;
+            const data = await res.json();
 
-        // Update proxy url
-        const host = window.location.hostname || "127.0.0.1";
-        const proxyPort = data.config?.proxyPort || 1080;
-        document.getElementById("proxyUrl").textContent = `socks5://${host}:${proxyPort}`;
-
-        // Update Preferred Country selection if user has not manually changed country
-        if (data.config && data.config.preferredCountry && !userChangedCountry) {
-          const sel = document.getElementById("countrySelect");
-          if (sel && sel.value === "ALL") {
-            const pref = data.config.preferredCountry.toUpperCase();
-            let found = false;
-            for (let i = 0; i < sel.options.length; i++) {
-              if (sel.options[i].value === pref) {
-                sel.selectedIndex = i;
-                found = true;
-                break;
+            Object.assign(vpn, data.vpn || {});
+            Object.assign(proxy, data.proxy || {});
+            Object.assign(sync, data.sync || {});
+            if (data.config) {
+              Object.assign(config, data.config);
+              if (data.config.preferredCountry && !userHasChangedCountry.value && selectedCountry.value === "ALL") {
+                selectedCountry.value = data.config.preferredCountry.toUpperCase();
+                loadNodes();
               }
             }
-            if (!found && pref) {
-              const opt = document.createElement("option");
-              opt.value = pref;
-              opt.textContent = `⭐ 首选国家 (${data.config.preferredCountryZh || pref})`;
-              sel.appendChild(opt);
-              sel.value = pref;
+
+            if (autoScrollLogs.value && logDrawerOpen.value) {
+              nextTick(() => {
+                const el = document.getElementById("terminalLogs");
+                if (el) el.scrollTop = el.scrollHeight;
+              });
             }
-            loadNodes();
+          } catch (e) {
+            console.error("Status fetch error:", e);
           }
-        }
-        // Update smart connect button text
-        const smartBtn = document.getElementById("smartConnectBtn");
-        if (smartBtn && data.config && data.config.preferredCountryZh) {
-          smartBtn.innerHTML = `⚡ 智能连接最佳${escapeHtml(data.config.preferredCountryZh)}家宽节点`;
-        }
-        // Update logs
-        if (vpn.logs && vpn.logs.length > 0) {
-          const term = document.getElementById("logsTerminal");
-          if (term) {
-            term.innerHTML = vpn.logs.map(l => {
-              const cls = l.includes("[ERR]") ? "log-line-err" : (l.includes("Initialization Sequence Completed") || l.includes("Verified") ? "log-line-ok" : "");
-              return `<div class="${cls}">${escapeHtml(l)}</div>`;
-            }).join("");
-            const autoScroll = document.getElementById("autoScrollCheck");
-            if (!autoScroll || autoScroll.checked) {
-              term.scrollTop = term.scrollHeight;
+        };
+
+        const loadNodes = async () => {
+          try {
+            isLoading.value = true;
+            const params = new URLSearchParams({
+              ssl_only: "true",
+              ip_type: currentIpType.value,
+              country: selectedCountry.value,
+              sort: selectedSort.value,
+              search: searchQuery.value.trim(),
+            });
+
+            const res = await apiFetch(`/api/nodes?${params.toString()}`);
+            if (res.ok) {
+              const data = await res.json();
+              nodes.value = data.nodes || [];
             }
+          } catch (e) {
+            console.error("Failed to load nodes:", e);
+          } finally {
+            isLoading.value = false;
           }
-          const badge = document.getElementById("logCountBadge");
-          if (badge) badge.textContent = vpn.logs.length;
-          const stat = document.getElementById("drawerLogStat");
-          if (stat) stat.textContent = `${vpn.logs.length} 条日志`;
-        }
+        };
 
-      } catch (err) {
-        console.error("Status fetch error:", err);
-      }
-    }
+        const setGroupFilter = (type) => {
+          currentIpType.value = type;
+          loadNodes();
+        };
 
-    async function loadNodes() {
-      try {
-        const ip_type = document.getElementById("ipTypeSelect").value;
-        const country = document.getElementById("countrySelect").value;
-        const sort = document.getElementById("sortSelect").value;
-        const search = document.getElementById("searchInput").value;
+        const onCountryChange = () => {
+          userHasChangedCountry.value = true;
+          loadNodes();
+        };
 
-        const params = new URLSearchParams({
-          ssl_only: currentSslOnly ? "true" : "false",
-          ip_type,
-          country,
-          sort,
-          search
+        const connectNode = async (id) => {
+          try {
+            connectingNodeId.value = id;
+            const res = await apiFetch(`/api/nodes/${encodeURIComponent(id)}/connect`, { method: "POST" });
+            const data = await res.json();
+            if (data.success) {
+              await fetchStatus();
+            } else {
+              alert("连接失败: " + (data.error || "未知原因"));
+            }
+          } catch (err) {
+            alert("请求异常: " + err);
+          } finally {
+            connectingNodeId.value = null;
+          }
+        };
+
+        const disconnectVpn = async () => {
+          try {
+            await apiFetch("/api/disconnect", { method: "POST" });
+            await fetchStatus();
+          } catch (e) {
+            console.error("Disconnect error:", e);
+          }
+        };
+
+        const testNode = async (id) => {
+          try {
+            testingNodeIds.value.add(id);
+            const res = await apiFetch(`/api/nodes/${encodeURIComponent(id)}/test`, { method: "POST" });
+            const data = await res.json();
+            if (data.latencyMs) {
+              const target = nodes.value.find((n) => n.id === id);
+              if (target) target.latencyMs = data.latencyMs;
+            } else {
+              alert("测速超时或节点未响应。");
+            }
+          } catch (e) {
+            console.error("Test error:", e);
+          } finally {
+            testingNodeIds.value.delete(id);
+          }
+        };
+
+        const smartConnect = async () => {
+          try {
+            isSmartConnecting.value = true;
+            const res = await apiFetch("/api/smart-connect", { method: "POST" });
+            const data = await res.json();
+            if (data.success) {
+              await fetchStatus();
+            } else {
+              alert(data.error || "未找到可用节点");
+            }
+          } catch (e) {
+            alert("智能连接失败: " + e);
+          } finally {
+            isSmartConnecting.value = false;
+          }
+        };
+
+        const refreshNodesList = async () => {
+          try {
+            sync.isSyncing = true;
+            const res = await apiFetch("/api/nodes/refresh", { method: "POST" });
+            const data = await res.json();
+            await fetchStatus();
+            await loadNodes();
+          } catch (e) {
+            alert("刷新失败: " + e);
+          } finally {
+            sync.isSyncing = false;
+          }
+        };
+
+        const toggleLogDrawer = (open) => {
+          logDrawerOpen.value = typeof open === "boolean" ? open : !logDrawerOpen.value;
+          if (logDrawerOpen.value) {
+            nextTick(() => {
+              const el = document.getElementById("terminalLogs");
+              if (el) el.scrollTop = el.scrollHeight;
+            });
+          }
+        };
+
+        const clearLogs = () => {
+          vpn.logs = [];
+        };
+
+        const openExportModal = async () => {
+          try {
+            const res = await apiFetch("/api/export");
+            if (res.ok) {
+              Object.assign(exportData, await res.json());
+            }
+          } catch {}
+          exportModalOpen.value = true;
+        };
+
+        const copyText = (text) => {
+          if (!text) return;
+          navigator.clipboard.writeText(text);
+          alert("已复制到剪贴板！");
+        };
+
+        const copyProxyUrl = () => {
+          copyText(proxyDisplayUrl.value);
+        };
+
+        const handleKeydown = (e) => {
+          if (e.key === "Escape") {
+            if (logDrawerOpen.value) logDrawerOpen.value = false;
+            if (exportModalOpen.value) exportModalOpen.value = false;
+          }
+        };
+
+        onMounted(() => {
+          if (window.location.hash === "#openlog") {
+            logDrawerOpen.value = true;
+          }
+          fetchStatus();
+          loadNodes();
+          statusTimer = setInterval(fetchStatus, 3000);
+          window.addEventListener("keydown", handleKeydown);
         });
-        const res = await fetch(`/api/nodes?${params.toString()}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        allNodes = data.nodes || [];
-        renderNodesTable(allNodes);
-      } catch (err) {
-        console.error("Failed to load nodes:", err);
-      }
-    }
 
-    function renderNodesTable(nodes) {
-      const tbody = document.getElementById("nodesTableBody");
-      if (nodes.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">没有找到符合条件的节点</td></tr>`;
-        return;
-      }
+        onUnmounted(() => {
+          if (statusTimer) clearInterval(statusTimer);
+          window.removeEventListener("keydown", handleKeydown);
+        });
 
-      tbody.innerHTML = nodes.map(n => {
-        const isCurrentActive = activeNodeId === n.id;
-        const rowClass = isCurrentActive ? "active-row" : "";
-        const sslBadge = n.hasSslVpn
-          ? `<span class="badge-ssl">SSL-VPN TCP ${n.sslVpnPort || 443}</span>`
-          : `<span class="badge-other">OpenVPN ${n.openVpnPort || 443}</span>`;
-
-        let pingClass = "ping-good";
-        const pingVal = n.latencyMs || n.ping;
-        if (pingVal > 200) pingClass = "ping-poor";
-        else if (pingVal > 100) pingClass = "ping-medium";
-
-        return `
-          <tr class="${rowClass}">
-            <td>
-              <div style="font-weight: 700; font-size: 14px;">${escapeHtml(n.countryZh)}</div>
-              <div style="font-size: 12px; color: var(--text-secondary);">${escapeHtml(n.countryLong)} (${n.countryShort})</div>
-            </td>
-            <td>
-              <div style="font-weight: 600; font-family: monospace;">${escapeHtml(n.ip)}</div>
-              <div style="font-size: 12px; color: var(--text-secondary);">${escapeHtml(n.hostName)}</div>
-              ${n.isp ? `<div style="font-size: 11px; color: #a5b4fc; margin-top: 2px;">${escapeHtml(n.isp)}${n.city ? ' · ' + escapeHtml(n.city) : ''}</div>` : ''}
-            </td>
-            <td>
-              <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
-                ${sslBadge}
-                ${n.ipType === 'residential' ? '<span class="badge-residential">🏠 家庭宽带</span>' : (n.ipType === 'datacenter' ? '<span class="badge-datacenter">🏢 机房节点</span>' : (n.ipType === 'mobile' ? '<span class="badge-mobile">📱 移动蜂窝</span>' : ''))}
-              </div>
-            </td>
-            <td>
-              <div style="font-weight: 700; color: #818cf8;">${n.speedFormatted || "0 bps"}</div>
-              <div class="${pingClass}">${pingVal} ms ${n.latencyMs ? "(实测)" : ""}</div>
-            </td>
-            <td>
-              <div>${n.numVpnSessions} 个活跃会话</div>
-              <div style="font-size: 12px; color: var(--text-secondary);">${Math.round(n.uptime / 86400)} 天运行</div>
-            </td>
-            <td style="text-align: right;">
-              <div style="display: inline-flex; gap: 8px;">
-                <button class="btn btn-sm" onclick="testNodeLatency('${encodeURIComponent(n.id)}')">测速</button>
-                <button class="btn btn-sm ${isCurrentActive ? 'btn-success' : 'btn-primary'}" onclick="connectNode('${encodeURIComponent(n.id)}')">
-                  ${isCurrentActive ? '已连接' : '连接'}
-                </button>
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join("");
-    }
-
-    async function connectNode(id) {
-      try {
-        const res = await fetch(`/api/nodes/${id}/connect`, { method: "POST" });
-        const data = await res.json();
-        if (data.success) {
-          fetchStatus();
-          loadNodes();
-        } else {
-          alert("连接失败: " + (data.error || "未知原因"));
-        }
-      } catch (err) {
-        alert("请求异常: " + err);
-      }
-    }
-
-    async function disconnectVpn() {
-      try {
-        await fetch("/api/disconnect", { method: "POST" });
-        fetchStatus();
-        loadNodes();
-      } catch (err) {
-        console.error("Disconnect error:", err);
-      }
-    }
-
-    async function testNodeLatency(id) {
-      try {
-        const res = await fetch(`/api/nodes/${id}/test`, { method: "POST" });
-        const data = await res.json();
-        if (data.latencyMs) {
-          loadNodes();
-        } else {
-          alert("测速超时或节点未响应。");
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    async function smartConnect() {
-      try {
-        const res = await fetch("/api/smart-connect", { method: "POST" });
-        const data = await res.json();
-        if (data.success) {
-          fetchStatus();
-          loadNodes();
-        } else {
-          alert(data.error || "未找到可用节点");
-        }
-      } catch (e) {
-        alert("智能连接失败: " + e);
-      }
-    }
-
-    async function refreshNodesList() {
-      const badge = document.getElementById("syncBadge");
-      if (badge) badge.innerHTML = `<span style="color: var(--warning);">⏳ 正在同步 VPNGate 节点...</span>`;
-      try {
-        const res = await fetch("/api/nodes/refresh", { method: "POST" });
-        const data = await res.json();
-        fetchStatus();
-        loadNodes();
-      } catch (e) {
-        alert("刷新失败: " + e);
-      }
-    }
-
-    function setGroupFilter(type) {
-      currentIpType = type;
-      const sel = document.getElementById("ipTypeSelect");
-      if (sel) sel.value = type;
-
-      const tabs = {
-        residential: document.getElementById("tabResidential"),
-        datacenter: document.getElementById("tabDatacenter"),
-        ALL: document.getElementById("tabAll"),
-      };
-
-      for (const [k, el] of Object.entries(tabs)) {
-        if (el) el.className = "tab-btn " + (k === type ? "active" : "");
-      }
-      loadNodes();
-    }
-
-    function onIpTypeSelectChange() {
-      const type = document.getElementById("ipTypeSelect").value;
-      setGroupFilter(type);
-    }
-    function applyFilters() {
-      loadNodes();
-    }
-
-    function openExportModal() {
-      const host = window.location.hostname || "127.0.0.1";
-      document.getElementById("exportSocks5").textContent = `socks5h://${host}:1080`;
-      document.getElementById("exportHttp").textContent = `http://${host}:1080`;
-      document.getElementById("exportCurl").textContent = `curl --proxy socks5h://${host}:1080 https://api.ipify.org`;
-      document.getElementById("exportShell").textContent = `export all_proxy="socks5://${host}:1080"\nexport http_proxy="http://${host}:1080"`;
-      document.getElementById("exportModal").style.display = "flex";
-    }
-
-    function closeExportModal() {
-      document.getElementById("exportModal").style.display = "none";
-    }
-
-    function copyProxyUrl() {
-      const text = document.getElementById("proxyUrl").textContent;
-      navigator.clipboard.writeText(text);
-      alert("已复制代理地址: " + text);
-    }
-
-    function copyText(elemId) {
-      const text = document.getElementById(elemId).textContent;
-      navigator.clipboard.writeText(text);
-      alert("已复制到剪贴板！");
-    }
-
-    function clearLogs() {
-      document.getElementById("logsTerminal").innerHTML = "";
-    }
-
-    function formatBytes(bytes) {
-      if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + " GB";
-      if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + " MB";
-      if (bytes >= 1024) return (bytes / 1024).toFixed(2) + " KB";
-      return bytes + " B";
-    }
-
-    function escapeHtml(str) {
-      return (str || "").replace(/[&<>"']/g, m => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-      })[m]);
-    }
-
-    // Initial setup
-    fetchStatus();
-    loadNodes();
-    setInterval(fetchStatus, 3000);
-  </script>
-  <!-- Floating Log Toggle Button -->
-  <button class="floating-log-btn" id="floatingLogBtn" onclick="toggleLogDrawer()" title="查看实时运行日志">
-    <span class="pulse-dot" id="logPulseDot"></span>
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <polyline points="4 17 10 11 4 5"></polyline>
-      <line x1="12" y1="19" x2="20" y2="19"></line>
-    </svg>
-    <span>运行日志</span>
-    <span class="log-count-badge" id="logCountBadge">0</span>
-  </button>
-
-  <!-- Floating Side Drawer Backdrop -->
-  <div class="side-drawer-backdrop" id="sideDrawerBackdrop" onclick="toggleLogDrawer(false)"></div>
-
-  <!-- Floating Side Drawer Panel -->
-  <aside class="side-log-drawer" id="sideLogDrawer">
-    <div class="side-drawer-header">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span class="pulse-dot"></span>
-        <h3>实时运行日志 (OpenVPN & Proxy)</h3>
-      </div>
-      <div style="display: flex; gap: 8px; align-items: center;">
-        <button class="btn btn-sm" onclick="clearLogs()">清空</button>
-        <button class="drawer-close-btn" onclick="toggleLogDrawer(false)">&times;</button>
-      </div>
-    </div>
-    <div class="side-drawer-terminal" id="logsTerminal">
-      等待日志事件...
-    </div>
-    <div class="side-drawer-footer">
-      <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); cursor: pointer;">
-        <input type="checkbox" id="autoScrollCheck" checked> 自动滚动到底部
-      </label>
-      <span style="font-size: 11px; color: var(--text-secondary);" id="drawerLogStat">0 条日志</span>
-    </div>
-  </aside>
-
-  <script>
-    let logDrawerOpen = false;
-    function toggleLogDrawer(open) {
-      logDrawerOpen = typeof open === "boolean" ? open : !logDrawerOpen;
-      const drawer = document.getElementById("sideLogDrawer");
-      const backdrop = document.getElementById("sideDrawerBackdrop");
-      if (drawer) drawer.classList.toggle("open", logDrawerOpen);
-      if (backdrop) backdrop.classList.toggle("open", logDrawerOpen);
-    }
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && logDrawerOpen) toggleLogDrawer(false);
-    });
+        return {
+          vpn,
+          proxy,
+          config,
+          sync,
+          nodes,
+          isLoading,
+          currentIpType,
+          selectedCountry,
+          selectedSort,
+          searchQuery,
+          testingNodeIds,
+          connectingNodeId,
+          isSmartConnecting,
+          logDrawerOpen,
+          autoScrollLogs,
+          exportModalOpen,
+          exportData,
+          activeNodeId,
+          statusDesc,
+          proxyDisplayUrl,
+          formatSyncTime,
+          formatBytes,
+          getPingClass,
+          loadNodes,
+          setGroupFilter,
+          onCountryChange,
+          connectNode,
+          disconnectVpn,
+          testNode,
+          smartConnect,
+          refreshNodesList,
+          toggleLogDrawer,
+          clearLogs,
+          openExportModal,
+          copyText,
+          copyProxyUrl,
+        };
+      },
+    }).mount("#app");
   </script>
 </body>
 </html>
