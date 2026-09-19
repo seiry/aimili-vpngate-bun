@@ -17,7 +17,7 @@ services:
       - UI_HOST=0.0.0.0
       - UI_PORT=8787
       - UI_USER=${UI_USER:-admin}
-      - UI_PASS=${UI_PASS:-}
+      - UI_PASS=${UI_PASS:-passwd}
       - PROXY_HOST=0.0.0.0
       - PROXY_PORT=1080
       - PROXY_USER=${PROXY_USER:-}
