@@ -237,5 +237,6 @@ console.log("出口 IP:", await res.text());
 ## 📄 开源许可
 
 本项目遵循 MIT 协议开源。
+fork 自 https://github.com/baoweise-bot/aimili-vpngate
 代码主要架构及优化由 **Google Gemini** 模型驱动生成与审查。
 VPN 节点数据由筑波大学 [VPNGate](https://www.vpngate.net/) 学术实验项目志愿者提供。
