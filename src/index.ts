@@ -32,12 +32,12 @@ const server = Bun.serve({
 console.log(`[Web] Dashboard running at http://${server.hostname}:${server.port}`);
 
 // 3. Initial node loading
-const cachedNodes = getAllNodes(true);
+const cachedNodes = getAllNodes(false);
 if (cachedNodes.length === 0) {
   console.log("[Init] No nodes in cache. Fetching initial VPNGate node list...");
   refreshNodes().catch((err) => console.error("[Init] Error in initial fetch:", err));
 } else {
-  console.log(`[Init] Loaded ${cachedNodes.length} SSL-VPN nodes from cache.`);
+  console.log(`[Init] Loaded ${cachedNodes.length} VPN nodes from cache.`);
   // Fetch fresh list in background
   refreshNodes().catch((err) => console.error("[Init] Background update error:", err));
 }
@@ -62,7 +62,7 @@ if (config.autoReconnect && lastSession.enabled && lastSession.nodeId) {
   }, 2500);
 } else if (config.autoConnect) {
   setTimeout(async () => {
-    const nodes = getAllNodes(true);
+    const nodes = getAllNodes(false);
     if (nodes.length === 0) return;
 
     const pref = config.preferredCountry ? config.preferredCountry.toUpperCase() : "";

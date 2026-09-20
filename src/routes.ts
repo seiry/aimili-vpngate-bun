@@ -191,13 +191,12 @@ app.post("/api/disconnect", async (c) => {
   return c.json({ success: true, state: "disconnected" });
 });
 
-// Smart auto-connect to best SSL-VPN node (prioritizing residential nodes)
+// Smart auto-connect to best node (prioritizing residential nodes across all protocols & ports)
 app.post("/api/smart-connect", async (c) => {
-  const nodes = getAllNodes(true);
+  const nodes = getAllNodes(false);
   if (nodes.length === 0) {
-    return c.json({ success: false, error: "No SSL-VPN nodes available." }, 400);
+    return c.json({ success: false, error: "No VPN nodes available." }, 400);
   }
-
   const pref = config.preferredCountry ? config.preferredCountry.toUpperCase() : "";
   let best: VpnNode | null = null;
 

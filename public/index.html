@@ -650,9 +650,9 @@
           </div>
 
           <div class="stat-card">
-            <div class="stat-label">当前协议</div>
-            <div class="stat-value">SoftEther SSL-VPN</div>
-            <div class="stat-desc">TCP 443 / SSL 隧道转发</div>
+            <div class="stat-label">当前协议与端口</div>
+            <div class="stat-value">{{ currentProtocolDisplay }}</div>
+            <div class="stat-desc">{{ currentProtocolDesc }}</div>
           </div>
 
           <div class="stat-card">
@@ -760,7 +760,7 @@
               </td>
               <td>
                 <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
-                  <span class="badge-ssl">SSL-VPN TCP {{ node.sslVpnPort || 443 }}</span>
+                  <span class="badge-ssl">{{ (node.openVpnProto || node.sslVpnProto || 'udp').toUpperCase() }} : {{ node.openVpnPort || node.sslVpnPort || (node.openVpnProto === 'tcp' ? 443 : 1194) }}</span>
                   <span v-if="node.ipType === 'residential'" class="badge-residential">🏠 家庭宽带</span>
                   <span v-else-if="node.ipType === 'datacenter'" class="badge-datacenter">🏢 机房节点</span>
                   <span v-else-if="node.ipType === 'mobile'" class="badge-mobile">📱 移动蜂窝</span>
@@ -961,13 +961,26 @@
             return `已连接 ${vpn.uptimeSeconds}s | 节点: ${vpn.activeNode?.countryZh || ""}`;
           }
           if (vpn.state === "connecting") {
-            return `正在建立 SSL-VPN 隧道 (${vpn.activeNode?.ip || ""})`;
+            return `正在建立 VPN 隧道 (${vpn.activeNode?.ip || ""})`;
           }
           if (vpn.state === "error") {
             return vpn.lastError || "发生错误";
           }
           return "请从下方节点列表选择一个连接";
         });
+        const currentProtocolDisplay = computed(() => {
+          if (!vpn.activeNode) return "OpenVPN / 全协议";
+          const proto = (vpn.activeNode.openVpnProto || vpn.activeNode.sslVpnProto || "udp").toUpperCase();
+          const port = vpn.activeNode.openVpnPort || vpn.activeNode.sslVpnPort || (proto === "TCP" ? 443 : 1194);
+          return `${proto} : ${port}`;
+        });
+
+        const currentProtocolDesc = computed(() => {
+          if (!vpn.activeNode) return "支持 TCP/UDP 全端口隧道";
+          const proto = (vpn.activeNode.openVpnProto || vpn.activeNode.sslVpnProto || "udp").toUpperCase();
+          return proto === "UDP" ? "UDP 高速低延时隧道" : "TCP / TLS 隧道转发";
+        });
+
 
         const proxyDisplayUrl = computed(() => {
           const host = window.location.hostname || "127.0.0.1";
@@ -1037,7 +1050,7 @@
           try {
             isLoading.value = true;
             const params = new URLSearchParams({
-              ssl_only: "true",
+              ssl_only: "false",
               ip_type: currentIpType.value,
               country: selectedCountry.value,
               sort: selectedSort.value,
@@ -1218,6 +1231,8 @@
           activeNodeId,
           statusDesc,
           proxyDisplayUrl,
+          currentProtocolDisplay,
+          currentProtocolDesc,
           formatSyncTime,
           formatBytes,
           getPingClass,

@@ -40,12 +40,22 @@
 
 ## 2. 核心架构与关键业务实现
 
-### 2.1 为什么采用 SoftEther SSL-VPN
-VPNGate 是日本筑波大学开发的学术开源项目，所有节点本质上都是 SoftEther VPN Server。
-- **协议特性**：SoftEther 原生 SSL-VPN 协议将 VPN 流量完全封装在标准的 **TLS/HTTPS（TCP 443 / 995 端口）** 握手中。
-- **穿透优势**：普通的 UDP OpenVPN、L2TP/IPsec 在公共网络、云服务商或高防 VPS 上极易受到 QoS 限制或被防火墙精准丢包；而通过 TCP 443 跑的 SSL-VPN 拥有与访问普通 HTTPS 网站完全一致的网络特征，抗封锁和穿透 NAT 的能力最强。
-- **数据提取**：抓取程序同时从 `https://www.vpngate.net/cn/`（提取 SSL-VPN 专有 TCP 端口）与官方 API（提取内嵌客户端证书）合并，默认只提供 SSL-VPN 节点。
+### 2.1 为什么在 Docker 中选用 OpenVPN 协议（接入 SoftEther 服务端）与开放任意端口
+VPNGate 是日本筑波大学开发的学术开源项目，所有节点本质上都是 SoftEther VPN Server，支持 4 种接入协议：
 
+1. **SoftEther 专有客户端 (SSL-VPN Client)**：依赖官方闭源/专用客户端（`vpnclient` + `vpncmd`），通过虚拟 TAP 网卡工作。在 Docker 容器中需要常驻后台系统服务进程，并通过 socket 进行复杂的虚拟接口配置与管理，在容器化环境下极其繁琐且容易僵死。
+2. **L2TP / IPsec**：依赖宿主机与容器内核的 IPsec 模块（`xfrm`, `esp`, `ah`）和 `ppp` 守护进程。在 Docker 环境下 NAT-T 极易损坏，且高度依赖宿主机特定内核模块与特权模式，跨平台（arm64 / amd64）兼容性差。
+3. **MS-SSTP**：微软 Windows 专有协议，在 Linux 容器中必须依赖第三方逆向实现的 `sstp-client` + `pppd`，单线程吞吐性能低、偶发断线后进程容易挂死。
+4. **OpenVPN 协议（接入 SoftEther 服务端的 OpenVPN 兼容层）⭐ 最优解**：
+   - SoftEther 服务端原生内置了高度成熟的 OpenVPN 兼容服务；
+   - VPNGate 官方 API 直接将完整的 `.ovpn` 配置文件与嵌入式 CA 证书打包为 Base64 供客户端一键下载解析；
+   - Linux 容器只需要标准的通用 `openvpn` 守护进程与基础的 `/dev/net/tun` 设备，无需加载任何特殊的宿主机内核模块；
+   - 单进程生命周期易管理，资源占用微乎其微（<10MB），断线重启极为稳固。
+
+**为什么支持任意端口（而非局限于 443）**：
+- 早期设计偏向国内 GFW 封锁环境，因此只偏好伪装在 HTTPS (TCP 443 / 995) 端口的节点；
+- 但本项目专为部署在**海外 VPS / Coolify** 生产环境设计，不存在针对端口的 GFW 阻断或特定 QoS 限制；
+- VPNGate 各志愿者的 SoftEther / OpenVPN 服务端运行在各种端口上（443、995、1194、1205、1363、1841、5555 等）。全面开放任意端口能够解锁全量节点池，显著提升可用节点数量与连接成功率。
 ### 2.2 SOCKS5 & HTTP 双协议单端口自适应代理与 407 避坑
 - **单端口复用**：系统默认只监听 `1080` 端口。接收到连接时，分析初始数据包首字节：
   - `0x05`：进入标准 RFC 1928 SOCKS5 握手流程，支持客户端通过 `socks5h://` 请求由服务端远程解析域名，避免客户端本地 DNS 污染与泄漏。

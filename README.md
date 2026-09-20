@@ -1,6 +1,6 @@
 # AimiliVPN Gate (Bun) 🚀
 
-> **VPNGate SSL-VPN 节点管理与 SOCKS5 / HTTP 代理网关**  
+> **VPNGate 节点管理与 SOCKS5 / HTTP 代理网关**  
 > 基于 **Node.js / Bun** 高性能运行时重写，前端采用 **Vue 3 离线优先** 响应式架构，代码由 **Gemini** 驱动与生成。  
 > 本项目专为 **Coolify** 自托管 PaaS 深度定制优化，同时完美支持独立的 **Docker / Docker Compose** 环境运行。
 
@@ -16,9 +16,15 @@
 
 - ⚡ **超轻量高性能运行时 (Bun + Hono)**：
   - 冷启动耗时 `<50ms`，基础常驻内存仅 `~30MB`，原生嵌入 SQLite WAL 高并发持久化存储。
-- 🔒 **精选 SoftEther SSL-VPN (TCP 443 / 995)**：
-  - 自动从 VPNGate 抓取并只收录原生支持 **SSL-VPN** 的节点。
-  - VPN 流量完全封装伪装在标准 TLS/HTTPS 握手中，具有极高的 NAT 穿透力与抗封锁能力。
+- 🛡️ **容器原生 OpenVPN 协议引擎（连接 SoftEther 服务端）**：
+  - 在 VPNGate 支持的 4 种协议（SoftEther 专有客户端、L2TP/IPsec、MS-SSTP、OpenVPN）中，**选定 OpenVPN 作为 Docker 容器化的最优解**：
+    - 规避 L2TP/IPsec 对宿主机/容器内核模块（`xfrm`/`esp`）及特权网络的依赖，免去 NAT-T 穿透损毁问题；
+    - 避免 MS-SSTP 在 Linux 容器下的兼容性劣势与性能损耗；
+    - 无需安装臃肿的 SoftEther 专用客户端服务（免除创建/管理复杂 TAP 虚拟网卡）；
+    - 基于 Linux 通用 `tun` 设备与标准 OpenVPN 客户端直连 SoftEther 服务端的 OpenVPN 兼容接口，单进程优雅监管，内存极低、断线恢复极其稳固。
+- 🌐 **全端口任意支持（不再局限于 TCP 443）**：
+  - 自动从 VPNGate 抓取全量节点，**完全不限制特定端口（全面支持 443、995、1194 以及各大节点自主开放的高位随机端口）**。
+  - 专为海外 VPS / Coolify 环境设计（无防火墙端口封锁与 QoS 干扰），任何端口均可畅通直连，大幅扩充可用优质节点池。
 - 🏠 **家庭宽带 (Residential) 智能分类与首屏推荐**：
   - 内置 IP 威胁情报批量识别引擎，智能辨识**家庭光纤宽带 (Residential)** 与 **数据中心机房 (Datacenter)**。
   - 前端与智能连接策略**默认优先推荐高纯净度家庭宽带**，有效避免触发 Cloudflare 5 秒盾与流媒体风控。
@@ -79,7 +85,7 @@ services:
       - PROXY_PORT=1080
       - PROXY_USER=${PROXY_USER:-}
       - PROXY_PASS=${PROXY_PASS:-}
-      - SSL_VPN_ONLY=${SSL_VPN_ONLY:-true}
+      - SSL_VPN_ONLY=${SSL_VPN_ONLY:-false}
       - AUTO_CONNECT=${AUTO_CONNECT:-false}
       - AUTO_RECONNECT=${AUTO_RECONNECT:-true}
       - PREFERRED_COUNTRY=${PREFERRED_COUNTRY:-JP}
@@ -200,7 +206,7 @@ console.log("出口 IP:", await res.text());
 | `AUTO_CONNECT` | `false` | 容器首次冷启动无历史会话时是否自动触发智能连接 |
 | `AUTO_RECONNECT` | `true` | 重启时自动恢复上次连接的节点，或断线时看门狗自动故障转移 |
 | `PREFERRED_COUNTRY` | `JP` | 智能优选连接的首选国家，支持代码或名称（`JP`, `KR`, `US`, `SG`, `韩国` 等） |
-| `SSL_VPN_ONLY` | `true` | 是否仅筛选 SSL-VPN (SoftEther HTTPS) 节点 |
+| `SSL_VPN_ONLY` | `false` | 是否仅筛选 SSL-VPN (TCP 443/995) 节点。海外部署默认 `false`，全面解锁全量 UDP/TCP 与全端口优质节点 |
 | `REFRESH_INTERVAL_MINUTES` | `30` | 节点池后台自动增量抓取与刷新的间隔（分钟） |
 | `VPNGATE_DATA_DIR` | `/data` | 持久化数据目录（存储 SQLite 数据库、认证凭据与运行配置） |
 | `VPNGATE_MIRROR_URL` | `https://baoweise-bot.github.io/aimili-vpngate/vpngate.csv` | 官方源受阻时的备用 CSV 镜像源 |

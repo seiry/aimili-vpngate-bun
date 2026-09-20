@@ -91,12 +91,13 @@ export class VpnManager {
     }
 
     if (!content) {
-      // Generate SSL-VPN template for VPNGate
-      const port = node.sslVpnPort || 443;
+      // Generate OpenVPN template for VPNGate
+      const port = node.openVpnPort || node.sslVpnPort || 443;
+      const proto = node.openVpnProto || node.sslVpnProto || "tcp";
       content = [
         "client",
         "dev tun",
-        "proto tcp",
+        `proto ${proto}`,
         `remote ${node.ip} ${port}`,
         "resolv-retry infinite",
         "nobind",
@@ -191,7 +192,9 @@ export class VpnManager {
     this.activeNode = node;
     this.lastError = null;
     this.egressIp = null;
-    this.addLog(`Initiating connection to ${node.countryZh} (${node.ip}:${node.sslVpnPort || 443} SSL-VPN)...`);
+    const targetPort = node.openVpnPort || node.sslVpnPort || 443;
+    const targetProto = (node.openVpnProto || node.sslVpnProto || "tcp").toUpperCase();
+    this.addLog(`Initiating connection to ${node.countryZh} (${node.ip}:${targetPort} ${targetProto})...`);
 
     try {
       const configPath = await this.prepareConfigFile(node);
@@ -572,7 +575,7 @@ export function findNextBestResidentialNode(options: {
   excludeIp?: string;
   allNodes?: VpnNode[];
 }): VpnNode | null {
-  const allNodes = options.allNodes || getAllNodes(true);
+  const allNodes = options.allNodes || getAllNodes(false);
   // Automatic failover is strictly limited to residential broadband
   const residentialNodes = allNodes.filter(
     (n) => n.ipType === "residential" && (!options.excludeIp || n.ip !== options.excludeIp)
