@@ -4,6 +4,7 @@ import { vpnManager } from "./vpn.ts";
 import { app } from "./routes.ts";
 import { refreshNodes } from "./fetcher.ts";
 import { getAllNodes, getNodeById, getLastConnectedInfo } from "./db.ts";
+import type { VpnNode } from "./types.ts";
 
 console.log("=================================================");
 console.log(`   AimiliVPN Gate (Bun) - SSL-VPN to SOCKS5 Gateway`);

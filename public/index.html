@@ -658,7 +658,7 @@
           <div class="stat-card">
             <div class="stat-label">代理流量统计</div>
             <div class="stat-value">{{ formatBytes((proxy.bytesIn || 0) + (proxy.bytesOut || 0)) }}</div>
-            <div class="stat-desc">{{ proxy.activeConnections || 0 }} 个活跃连接 (累计 {{ proxy.totalConnections || 0 }})</div>
+            <div class="stat-desc" :title="'↓ 下载: ' + formatBytes(proxy.bytesIn || 0) + ' / ↑ 上传: ' + formatBytes(proxy.bytesOut || 0)">{{ proxy.activeConnections || 0 }} 个活跃连接 (累计 {{ proxy.totalConnections || 0 }})</div>
           </div>
         </section>
 

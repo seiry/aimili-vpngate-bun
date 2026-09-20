@@ -198,3 +198,106 @@ test("When PROXY_USER is empty string, proxy auth is completely disabled", async
   client.on("error", reject);
   await promise;
 });
+
+test("ProxyServer accurately tracks connection counts and byte statistics", async () => {
+  const statsPort = 19084;
+  const statsProxy = new ProxyServer();
+  await statsProxy.start(statsPort, "127.0.0.1");
+
+  // 1. Initial stats must be numeric 0, not undefined/NaN/null
+  const initialStats = statsProxy.getStats();
+  expect(initialStats.activeConnections).toBe(0);
+  expect(initialStats.totalConnections).toBe(0);
+  expect(initialStats.bytesIn).toBe(0);
+  expect(initialStats.bytesOut).toBe(0);
+
+  // 2. Perform SOCKS5 transfer
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const client = net.connect({ host: "127.0.0.1", port: statsPort });
+
+  client.once("connect", () => {
+    client.write(Buffer.from([0x05, 0x01, 0x00]));
+  });
+
+  let step = 0;
+  const testPayload = "HELLO_PROXY_STATS_CHECK";
+  client.on("data", async (data) => {
+    if (step === 0) {
+      step = 1;
+      const portHigh = (echoPort >> 8) & 0xff;
+      const portLow = echoPort & 0xff;
+      client.write(Buffer.from([0x05, 0x01, 0x00, 0x01, 127, 0, 0, 1, portHigh, portLow]));
+    } else if (step === 1) {
+      step = 2;
+      // Tunnel is established
+      const activeStats = statsProxy.getStats();
+      expect(activeStats.activeConnections).toBe(1);
+      expect(activeStats.totalConnections).toBe(1);
+      client.write(testPayload);
+    } else if (step === 2) {
+      expect(data.toString()).toBe(testPayload);
+      client.end();
+    }
+  });
+
+  client.on("close", async () => {
+    const { promise: tick, resolve: resolveTick } = Promise.withResolvers<void>();
+    setImmediate(resolveTick);
+    await tick;
+
+    const finalStats = statsProxy.getStats();
+    expect(finalStats.activeConnections).toBe(0);
+    expect(finalStats.totalConnections).toBe(1);
+    expect(finalStats.bytesOut).toBe(testPayload.length);
+    expect(finalStats.bytesIn).toBe(testPayload.length);
+
+    await statsProxy.stop();
+    resolve();
+  });
+
+  client.on("error", reject);
+  await promise;
+});
+
+test("Direct Web UI visit to proxy port does not pollute proxy traffic statistics", async () => {
+  const testProxyPort = 19085;
+  const webProxy = new ProxyServer();
+  await webProxy.start(testProxyPort, "127.0.0.1");
+
+  const { promise: webReady, resolve: resolveWebReady } = Promise.withResolvers<void>();
+  const mockUi = net.createServer((sock) => {
+    sock.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK");
+    sock.end();
+  }).listen(config.uiPort, "127.0.0.1", () => resolveWebReady());
+  await webReady;
+
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const client = net.connect({ host: "127.0.0.1", port: testProxyPort });
+  client.once("connect", () => {
+    client.write("GET /api/status HTTP/1.1\r\nHost: 127.0.0.1:19085\r\n\r\n");
+  });
+
+  client.on("data", (data) => {
+    expect(data.toString()).toContain("200 OK");
+    client.end();
+  });
+
+  client.on("close", async () => {
+    const { promise: tick, resolve: resolveTick } = Promise.withResolvers<void>();
+    setImmediate(resolveTick);
+    await tick;
+
+    const stats = webProxy.getStats();
+    expect(stats.activeConnections).toBe(0);
+    expect(stats.totalConnections).toBe(0);
+    expect(stats.bytesIn).toBe(0);
+    expect(stats.bytesOut).toBe(0);
+
+    mockUi.close();
+    await webProxy.stop();
+    resolve();
+  });
+
+  client.on("error", reject);
+  await promise;
+});

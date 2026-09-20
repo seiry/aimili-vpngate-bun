@@ -8,6 +8,7 @@ import { getAllNodes, getNodeById, updateNodeLatency } from "./db.ts";
 import { refreshNodes, testNodeLatency, getSyncStatus } from "./fetcher.ts";
 import { vpnManager } from "./vpn.ts";
 import { proxyServer } from "./proxy.ts";
+import type { VpnNode } from "./types.ts";
 
 export const app = new Hono();
 
@@ -250,4 +251,4 @@ app.get("/api/export", (c) => {
 });
 
 // Backward compatibility helper
-export const handleRequest = (req: Request): Promise<Response> => app.fetch(req);
+export const handleRequest = (req: Request): Promise<Response> | Response => app.fetch(req);

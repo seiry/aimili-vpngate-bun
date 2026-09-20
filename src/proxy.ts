@@ -5,6 +5,10 @@ import type { ProxyStats } from "./types.ts";
 export class ProxyServer {
   private server: net.Server | null = null;
   private auth: { user?: string; pass?: string } | null = null;
+  private activeConnections = 0;
+  private totalConnections = 0;
+  private bytesIn = 0;
+  private bytesOut = 0;
 
   constructor(auth?: { user?: string; pass?: string }) {
     if (auth) {
@@ -56,31 +60,18 @@ export class ProxyServer {
     if (this.server) {
       this.server.close(() => {
         this.server = null;
+        this.activeConnections = 0;
         resolve();
       });
     } else {
+      this.activeConnections = 0;
       resolve();
     }
     return promise;
   }
 
   private handleIncoming(clientSocket: net.Socket): void {
-    this.activeConnections++;
-    this.totalConnections++;
     clientSocket.setKeepAlive(true, 15000);
-    let isClosed = false;
-    const cleanup = () => {
-      if (!isClosed) {
-        isClosed = true;
-        this.activeConnections = Math.max(0, this.activeConnections - 1);
-      }
-    };
-
-    clientSocket.once("close", cleanup);
-    clientSocket.once("error", () => {
-      cleanup();
-      clientSocket.destroy();
-    });
 
     // Peak at first byte to distinguish SOCKS5 (0x05) vs HTTP (CONNECT / GET / etc.)
     clientSocket.once("data", (initialChunk: Buffer) => {
@@ -173,18 +164,27 @@ export class ProxyServer {
 
     if (atyp === 0x01) {
       // IPv4
-      if (reqChunk.length < 10) return clientSocket.end();
+      if (reqChunk.length < 10) {
+        clientSocket.end();
+        return;
+      }
       destHost = `${reqChunk[4]}.${reqChunk[5]}.${reqChunk[6]}.${reqChunk[7]}`;
       destPort = reqChunk.readUInt16BE(8);
     } else if (atyp === 0x03) {
       // Domain name (SOCKS5h)
       const dlen = reqChunk[4];
-      if (reqChunk.length < 5 + dlen + 2) return clientSocket.end();
+      if (reqChunk.length < 5 + dlen + 2) {
+        clientSocket.end();
+        return;
+      }
       destHost = reqChunk.subarray(5, 5 + dlen).toString("utf-8");
       destPort = reqChunk.readUInt16BE(5 + dlen);
     } else if (atyp === 0x04) {
       // IPv6
-      if (reqChunk.length < 22) return clientSocket.end();
+      if (reqChunk.length < 22) {
+        clientSocket.end();
+        return;
+      }
       const parts: string[] = [];
       for (let i = 0; i < 16; i += 2) {
         parts.push(reqChunk.readUInt16BE(4 + i).toString(16));
@@ -220,7 +220,7 @@ export class ProxyServer {
 
     // If client is accessing the Web UI directly on this port (e.g. via Coolify reverse proxy or browser)
     if (method && method.toUpperCase() !== "CONNECT" && target && target.startsWith("/") && !target.startsWith("//")) {
-      this.pipeOutbound(clientSocket, "127.0.0.1", config.uiPort, undefined, initialChunk);
+      this.pipeOutbound(clientSocket, "127.0.0.1", config.uiPort, undefined, initialChunk, false);
       return;
     }
 
@@ -297,8 +297,28 @@ export class ProxyServer {
     destHost: string,
     destPort: number,
     onConnected?: () => void,
-    initialData?: Buffer
+    initialData?: Buffer,
+    trackTraffic = true
   ): void {
+    if (trackTraffic) {
+      this.activeConnections++;
+      this.totalConnections++;
+    }
+
+    let isClosed = false;
+    const cleanup = () => {
+      if (trackTraffic && !isClosed) {
+        isClosed = true;
+        this.activeConnections = Math.max(0, this.activeConnections - 1);
+      }
+    };
+
+    clientSocket.once("close", cleanup);
+    clientSocket.once("error", () => {
+      cleanup();
+      clientSocket.destroy();
+    });
+
     const targetSocket = net.connect({
       host: destHost,
       port: destPort,
@@ -311,18 +331,27 @@ export class ProxyServer {
       targetSocket.setKeepAlive(true, 15000);
       clientSocket.setKeepAlive(true, 15000);
       if (onConnected) onConnected();
-      if (initialData) targetSocket.write(initialData);
+      if (initialData) {
+        if (trackTraffic) {
+          this.bytesOut += initialData.length;
+        }
+        targetSocket.write(initialData);
+      }
 
       // Bidirectional piping with traffic tracking
       clientSocket.on("data", (chunk) => {
-        this.bytesOut += chunk.length;
+        if (trackTraffic) {
+          this.bytesOut += chunk.length;
+        }
         if (!targetSocket.destroyed) {
           targetSocket.write(chunk);
         }
       });
 
       targetSocket.on("data", (chunk) => {
-        this.bytesIn += chunk.length;
+        if (trackTraffic) {
+          this.bytesIn += chunk.length;
+        }
         if (!clientSocket.destroyed) {
           clientSocket.write(chunk);
         }

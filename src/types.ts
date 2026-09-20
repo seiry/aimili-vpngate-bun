@@ -69,6 +69,7 @@ export interface AppConfig {
   uiUser?: string;
   uiPass?: string;
   uiAuthEnabled?: boolean;
+  proxyHost: string;
   proxyPort: number;
   proxyUser?: string;
   proxyPass?: string;

@@ -234,7 +234,7 @@ export class VpnManager {
 
       // Stream stdout
       (async () => {
-        if (!this.process || !this.process.stdout) return;
+        if (!this.process || !this.process.stdout || typeof this.process.stdout === "number") return;
         const reader = this.process.stdout.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -274,7 +274,7 @@ export class VpnManager {
 
       // Stream stderr
       (async () => {
-        if (!this.process || !this.process.stderr) return;
+        if (!this.process || !this.process.stderr || typeof this.process.stderr === "number") return;
         const reader = this.process.stderr.getReader();
         const decoder = new TextDecoder();
         while (true) {
