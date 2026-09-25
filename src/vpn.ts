@@ -215,11 +215,11 @@ export class VpnManager {
       };
 
       // Set timeout for connection attempt (25 seconds)
-      const timeoutTimer = setTimeout(() => {
+      const timeoutTimer = setTimeout(async () => {
         if (!isResolved) {
           this.lastError = "Connection attempt timed out after 25s.";
           this.addLog(this.lastError);
-          this.disconnect(false);
+          await this.disconnect(false);
           finish({ success: false, error: this.lastError });
         }
       }, 25000);
@@ -294,13 +294,19 @@ export class VpnManager {
         }
       })();
 
-      this.process.exited.then((code) => {
+      const spawnedProc = this.process;
+      spawnedProc.exited.then((code) => {
+        if (this.process !== spawnedProc && this.process !== null) {
+          // A newer process was already spawned; do not clobber it
+          return;
+        }
         this.addLog(`OpenVPN process exited with code ${code}`);
         this.stopHealthCheck();
         const wasConnected = this.hasEverConnected;
         const previousNode = this.activeNode;
-        this.process = null;
-
+        if (this.process === spawnedProc) {
+          this.process = null;
+        }
         if (this.state === "connecting" || this.state === "connected") {
           this.state = this.isIntentionalDisconnect ? "disconnected" : (code === 0 ? "disconnected" : "error");
           this.lastError = this.isIntentionalDisconnect ? null : `Process exited with code ${code}`;
