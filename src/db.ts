@@ -138,6 +138,15 @@ const insertNodeStmt = db.prepare(`
     $ip_type, $ip_type_zh, $isp, $city
   )
 `);
+const cleanStaleNodesStmt = db.prepare(`
+  DELETE FROM nodes WHERE last_updated < $minUpdated
+`);
+
+export function cleanStaleNodes(maxAgeMs = 3 * 3600 * 1000): number {
+  const minUpdated = Date.now() - maxAgeMs;
+  const res = cleanStaleNodesStmt.run({ $minUpdated: minUpdated });
+  return res.changes;
+}
 
 export function saveNodes(nodes: VpnNode[]): void {
   const transaction = db.transaction((items: VpnNode[]) => {

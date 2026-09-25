@@ -3,7 +3,7 @@ import { proxyServer } from "./proxy.ts";
 import { vpnManager } from "./vpn.ts";
 import { app } from "./routes.ts";
 import { refreshNodes } from "./fetcher.ts";
-import { getAllNodes, getNodeById, getLastConnectedInfo } from "./db.ts";
+import { getAllNodes, getNodeById, getLastConnectedInfo, cleanStaleNodes } from "./db.ts";
 import type { VpnNode } from "./types.ts";
 
 console.log("=================================================");
@@ -32,6 +32,12 @@ const server = Bun.serve({
 });
 console.log(`[Web] Dashboard running at http://${server.hostname}:${server.port}`);
 
+// Clean stale nodes from database on boot
+const prunedOnBoot = cleanStaleNodes(3 * 3600 * 1000);
+if (prunedOnBoot > 0) {
+  console.log(`[Init] Cleaned up ${prunedOnBoot} stale nodes (>3 hours old) from cache.`);
+}
+
 // 3. Initial node loading
 const cachedNodes = getAllNodes(false);
 if (cachedNodes.length === 0) {
@@ -49,16 +55,25 @@ if (config.autoReconnect && lastSession.enabled && lastSession.nodeId) {
   setTimeout(async () => {
     console.log(`[AutoReconnect] Detected saved VPN session from previous run (Node: ${lastSession.nodeId})`);
     const savedNode = getNodeById(lastSession.nodeId);
+    let connected = false;
     if (savedNode) {
       console.log(`[AutoReconnect] Restoring connection to previously used node: ${savedNode.countryZh} (${savedNode.ip})...`);
       const res = await vpnManager.connect(savedNode);
-      if (!res.success) {
+      connected = res.success;
+      if (!connected) {
+        vpnManager.markNodeFailed(savedNode.ip);
         console.warn(`[AutoReconnect] Previous node ${savedNode.ip} failed to reconnect. Attempting failover in ${lastSession.country || config.preferredCountry}...`);
-        await vpnManager.reconnectFailover(lastSession.country || config.preferredCountry, savedNode.ip);
       }
     } else {
       console.warn(`[AutoReconnect] Previous node ${lastSession.nodeId} is no longer reachable. Failing over to best node in ${lastSession.country || config.preferredCountry}...`);
-      await vpnManager.reconnectFailover(lastSession.country || config.preferredCountry);
+    }
+
+    if (!connected) {
+      const targetCountry = lastSession.country || config.preferredCountry;
+      const failoverRes = await vpnManager.reconnectFailover(targetCountry, savedNode?.ip);
+      if (!failoverRes) {
+        vpnManager.scheduleRecoveryRetry(targetCountry);
+      }
     }
   }, 2500);
 } else if (config.autoConnect) {
@@ -67,26 +82,26 @@ if (config.autoReconnect && lastSession.enabled && lastSession.nodeId) {
     if (nodes.length === 0) return;
 
     const pref = config.preferredCountry ? config.preferredCountry.toUpperCase() : "";
-    let target: VpnNode = nodes[0];
-
+    let target: VpnNode | null = null;
     if (pref) {
       const prefResidential = nodes.filter(
         (n) => n.ipType === "residential" && (n.countryShort.toUpperCase() === pref || n.countryZh === pref)
       );
-      if (prefResidential.length > 0) {
-        target = prefResidential[0];
-      } else {
+      target = prefResidential.length > 0 ? prefResidential[0] : null;
+      if (!target) {
         const prefAny = nodes.filter(
           (n) => n.countryShort.toUpperCase() === pref || n.countryZh === pref
         );
-        if (prefAny.length > 0) {
-          target = prefAny[0];
-        }
+        target = prefAny.length > 0 ? prefAny[0] : null;
       }
     }
+    if (!target) target = nodes[0];
 
     console.log(`[AutoConnect] Connecting to preferred node: ${target.countryZh} (${target.ip})`);
-    await vpnManager.connect(target);
+    const res = await vpnManager.connect(target);
+    if (!res.success) {
+      vpnManager.scheduleRecoveryRetry(pref);
+    }
   }, 3000);
 }
 

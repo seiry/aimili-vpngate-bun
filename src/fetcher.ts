@@ -2,7 +2,7 @@ import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import { config, COUNTRY_NAMES } from "./config.ts";
-import { saveNodes, getAllNodes, updateNodeLatency, getCachedIpMap, saveIpClassifications, type IpClassification } from "./db.ts";
+import { saveNodes, getAllNodes, updateNodeLatency, getCachedIpMap, saveIpClassifications, cleanStaleNodes, type IpClassification } from "./db.ts";
 import type { VpnNode } from "./types.ts";
 
 function formatSpeed(bps: number): string {
@@ -467,6 +467,10 @@ export async function refreshNodes(): Promise<{ count: number; sslCount: number;
   if (finalNodes.length > 0) {
     await enrichNodesWithIpType(finalNodes);
     saveNodes(finalNodes);
+    const pruned = cleanStaleNodes(3 * 3600 * 1000);
+    if (pruned > 0) {
+      console.log(`[Fetcher] Pruned ${pruned} stale nodes (>3 hours old).`);
+    }
     const sslCount = finalNodes.filter((n) => n.hasSslVpn).length;
     lastSyncTime = Date.now();
     isSyncing = false;

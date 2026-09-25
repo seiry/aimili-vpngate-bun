@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, type Subprocess } from "bun";
 import { config } from "./config.ts";
-import { saveLastConnected, clearLastConnected, getAllNodes } from "./db.ts";
+import { saveLastConnected, clearLastConnected, getAllNodes, getLastConnectedInfo } from "./db.ts";
 import type { VpnNode, VpnStatus, ConnectionState } from "./types.ts";
 
 export class VpnManager {
@@ -22,6 +22,8 @@ export class VpnManager {
   private consecutiveHealthFailures = 0;
   private logBuffer: string[] = [];
   private maxLogEntries = 200;
+  private failedNodeIps = new Map<string, number>();
+  private recoveryRetryTimer: Timer | null = null;
 
   getStatus(): VpnStatus & { logs: string[] } {
     const uptimeSeconds = this.connectedAt ? Math.floor((Date.now() - this.connectedAt) / 1000) : 0;
@@ -166,16 +168,18 @@ export class VpnManager {
     }
 
     try {
-      const res = Bun.spawnSync(["ip", "route", "show", "default", "dev", "eth0"]);
+      const res = Bun.spawnSync(["ip", "route", "show", "default"]);
       const out = res.stdout.toString().trim();
-      const match = out.match(/via\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
-      const gw = match ? match[1] : null;
+      const gwMatch = out.match(/via\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+      const devMatch = out.match(/dev\s+([a-zA-Z0-9_\-]+)/);
+      const gw = gwMatch ? gwMatch[1] : null;
+      const iface = devMatch ? devMatch[1] : "eth0";
 
       if (gw) {
-        this.addLog(`[Route] Preserving Docker LAN routes via gateway ${gw}`);
+        this.addLog(`[Route] Preserving Docker LAN routes via gateway ${gw} dev ${iface}`);
         // Protect Docker bridge and private networks, avoiding 10.0.0.0/8 which conflicts with VPN IPs
-        Bun.spawnSync(["ip", "route", "add", "172.16.0.0/12", "via", gw, "dev", "eth0"]);
-        Bun.spawnSync(["ip", "route", "add", "192.168.0.0/16", "via", gw, "dev", "eth0"]);
+        Bun.spawnSync(["ip", "route", "add", "172.16.0.0/12", "via", gw, "dev", iface]);
+        Bun.spawnSync(["ip", "route", "add", "192.168.0.0/16", "via", gw, "dev", iface]);
       }
     } catch (e) {
       console.warn("[VPN] Route protection warning:", e);
@@ -183,7 +187,7 @@ export class VpnManager {
   }
   async connect(node: VpnNode): Promise<{ success: boolean; error?: string }> {
     if (this.state === "connecting" || this.state === "connected") {
-      await this.disconnect();
+      await this.disconnect(false);
     }
 
     this.state = "connecting";
@@ -215,7 +219,7 @@ export class VpnManager {
         if (!isResolved) {
           this.lastError = "Connection attempt timed out after 25s.";
           this.addLog(this.lastError);
-          this.disconnect();
+          this.disconnect(false);
           finish({ success: false, error: this.lastError });
         }
       }, 25000);
@@ -255,6 +259,11 @@ export class VpnManager {
               this.hasEverConnected = true;
               this.state = "connected";
               this.connectedAt = Date.now();
+              if (this.recoveryRetryTimer) {
+                clearTimeout(this.recoveryRetryTimer);
+                this.recoveryRetryTimer = null;
+              }
+              this.failedNodeIps.delete(node.ip);
               saveLastConnected(node);
               this.addLog("VPN connection successfully established!");
               this.startHealthCheck();
@@ -300,6 +309,7 @@ export class VpnManager {
 
         if (wasConnected && !this.isIntentionalDisconnect && previousNode && !this.isRecovering) {
           this.isRecovering = true;
+          this.markNodeFailed(previousNode.ip);
           this.addLog("[Watchdog] Connection dropped unexpectedly. Current link has failed.");
           setTimeout(async () => {
             try {
@@ -317,7 +327,8 @@ export class VpnManager {
                     previousNode.ip
                   );
                   if (!success) {
-                    this.addLog(`[Watchdog] Failed to find or connect to next best residential node.`);
+                    this.addLog(`[Watchdog] Initial failover attempts exhausted. Scheduling periodic auto-recovery...`);
+                    this.scheduleRecoveryRetry(config.preferredCountry || previousNode.countryShort);
                   }
                 }
               }
@@ -343,9 +354,14 @@ export class VpnManager {
   async disconnect(intentional = true): Promise<void> {
     this.isIntentionalDisconnect = intentional;
     this.stopHealthCheck();
+    if (this.recoveryRetryTimer) {
+      clearTimeout(this.recoveryRetryTimer);
+      this.recoveryRetryTimer = null;
+    }
     this.hasEverConnected = false;
     if (intentional) {
       clearLastConnected();
+      this.failedNodeIps.clear();
     }
     if (!this.process && this.state === "disconnected") return;
 
@@ -382,31 +398,98 @@ export class VpnManager {
     this.egressIsp = null;
     this.addLog("VPN disconnected.");
   }
+  markNodeFailed(ip: string, cooldownMs = 15 * 60 * 1000): void {
+    this.failedNodeIps.set(ip, Date.now() + cooldownMs);
+  }
+
+  public scheduleRecoveryRetry(country?: string): void {
+    if (this.isIntentionalDisconnect) return;
+    const lastSession = getLastConnectedInfo();
+    if (!config.autoReconnect && !config.autoConnect && !lastSession.enabled) return;
+
+    if (this.recoveryRetryTimer) {
+      clearTimeout(this.recoveryRetryTimer);
+    }
+
+    const retryCountry = country || lastSession.country || config.preferredCountry;
+    this.addLog(`[AutoRecovery] Scheduling automatic recovery attempt in 30s (${retryCountry || "ANY"})...`);
+    this.recoveryRetryTimer = setTimeout(async () => {
+      this.recoveryRetryTimer = null;
+      if (this.state !== "connected" && this.state !== "connecting" && !this.isIntentionalDisconnect) {
+        this.addLog(`[AutoRecovery] Executing scheduled recovery attempt...`);
+        const success = await this.reconnectFailover(retryCountry);
+        if (!success && !this.isIntentionalDisconnect) {
+          this.scheduleRecoveryRetry(retryCountry);
+        }
+      }
+    }, 30000);
+  }
+
   /**
-   * Automatic failover: finds the next best residential SSL-VPN node
+   * Automatic failover: finds and iterates through the next best residential SSL-VPN nodes
    * Requirements:
    * 1. Only residential broadband nodes ("自动失效替换只会在家宽里")
    * 2. Respect preferred country first ("首先要遵守当前的优先国家")
-   * 3. Exclude failed/dead node IP
-   * 4. Speed must not be too slow: threshold >= 50M ("主要是速度不能太低，低于50M的就太慢了")
-   * 5. Rank by 60% active sessions (fewer is better) + 40% speed ("活跃会话越少越好。活跃会话的因素占60% 网速占40%的因数")
+   * 3. Exclude failed/dead node IPs (including cooldown)
+   * 4. Speed must not be too slow: threshold >= 50M
+   * 5. Rank by 60% active sessions + 40% speed
+   * 6. Multi-attempt failover loop across up to maxAttempts candidates
    */
-  async reconnectFailover(country?: string, excludeIp?: string): Promise<boolean> {
+  async reconnectFailover(country?: string, excludeIp?: string, maxAttempts = 3): Promise<boolean> {
     const prefCountry = country || config.preferredCountry;
-    const target = findNextBestResidentialNode({
-      preferredCountry: prefCountry,
-      excludeIp,
-    });
 
-    if (target) {
-      this.addLog(
-        `[Failover] Found next best residential node: ${target.countryZh} (${target.ip}, ${target.speedFormatted}, ${target.numVpnSessions} sessions). Reconnecting...`
-      );
-      const res = await this.connect(target);
-      return res.success;
+    const excludeSet = new Set<string>();
+    if (excludeIp) excludeSet.add(excludeIp);
+
+    const now = Date.now();
+    for (const [ip, expiresAt] of this.failedNodeIps.entries()) {
+      if (now < expiresAt) {
+        excludeSet.add(ip);
+      } else {
+        this.failedNodeIps.delete(ip);
+      }
     }
 
-    this.addLog(`[Failover] No qualifying residential backup node found for country: ${prefCountry || "ANY"}`);
+    let candidates = findCandidateResidentialNodes({
+      preferredCountry: prefCountry,
+      excludeIps: excludeSet,
+      maxCount: maxAttempts,
+    });
+
+    // If cooldown excluded all available nodes, clear cooldown and retry without cooldown
+    if (candidates.length === 0 && excludeSet.size > (excludeIp ? 1 : 0)) {
+      this.failedNodeIps.clear();
+      candidates = findCandidateResidentialNodes({
+        preferredCountry: prefCountry,
+        excludeIp,
+        maxCount: maxAttempts,
+      });
+    }
+
+    if (candidates.length === 0) {
+      this.addLog(`[Failover] No qualifying residential backup node found for country: ${prefCountry || "ANY"}`);
+      return false;
+    }
+
+    const primaryCandidate = candidates[0];
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      this.addLog(
+        `[Failover] [${i + 1}/${candidates.length}] Attempting residential backup: ${candidate.countryZh} (${candidate.ip}, ${candidate.speedFormatted}, ${candidate.numVpnSessions} sessions)...`
+      );
+      const res = await this.connect(candidate);
+      if (res.success) {
+        this.addLog(
+          `[Failover] Successfully established connection to residential backup: ${candidate.countryZh} (${candidate.ip})`
+        );
+        return true;
+      }
+      this.markNodeFailed(candidate.ip);
+      this.addLog(`[Failover] Candidate ${candidate.ip} failed (${res.error || "connection error"}).`);
+    }
+    // All candidate attempts failed: preserve the primary chosen candidate as activeNode for status display
+    this.activeNode = primaryCandidate;
+    this.addLog(`[Failover] All ${candidates.length} residential candidate attempts failed.`);
     return false;
   }
 
@@ -435,6 +518,7 @@ export class VpnManager {
           try {
             await this.disconnect(false);
             if (failedNode) {
+              this.markNodeFailed(failedNode.ip);
               if (failedNode.ipType !== "residential") {
                 this.addLog(
                   `[Watchdog] Current node (${failedNode.ip}) is not residential broadband (${failedNode.ipType || "unknown"}). Automatic failover only applies to residential broadband.`
@@ -443,10 +527,14 @@ export class VpnManager {
                 this.addLog(
                   `[Watchdog] Initiating automatic failover to next best residential node (excluding ${failedNode.ip})...`
                 );
-                await this.reconnectFailover(
+                const success = await this.reconnectFailover(
                   config.preferredCountry || failedNode.countryShort,
                   failedNode.ip
                 );
+                if (!success) {
+                  this.addLog(`[Watchdog] Initial failover attempts exhausted. Scheduling periodic auto-recovery...`);
+                  this.scheduleRecoveryRetry(config.preferredCountry || failedNode.countryShort);
+                }
               }
             }
           } finally {
@@ -562,30 +650,68 @@ export function rankResidentialNodes(candidates: VpnNode[]): VpnNode[] {
 }
 
 /**
- * Selects the next best residential SSL-VPN node for automatic failover.
+ * Finds candidate residential SSL-VPN nodes for automatic failover.
  * Requirements:
  * 1. Only residential nodes (ipType === "residential")
- * 2. Exclude the failed/current node IP
- * 3. Respect current preferred country first
- * 4. Filter out nodes below 50M (speed >= 50 Mbps)
- * 5. Rank by 60% active sessions (fewer is better) and 40% speed
+ * 2. Exclude failed/current node IPs (excludeIp / excludeIps)
+ * 3. Freshness filter: If nodes updated within maxAgeMs (default 3 hours) exist, prioritize them
+ * 4. Respect current preferred country first
+ * 5. Filter out nodes below 50M (speed >= 50 Mbps)
+ * 6. Rank by 60% active sessions (fewer is better) and 40% speed
  */
-export function findNextBestResidentialNode(options: {
+export function findCandidateResidentialNodes(options: {
   preferredCountry?: string;
   excludeIp?: string;
+  excludeIps?: string[] | Set<string>;
   allNodes?: VpnNode[];
-}): VpnNode | null {
+  maxCount?: number;
+  maxAgeMs?: number;
+}): VpnNode[] {
   const allNodes = options.allNodes || getAllNodes(false);
-  // Automatic failover is strictly limited to residential broadband
-  const residentialNodes = allNodes.filter(
-    (n) => n.ipType === "residential" && (!options.excludeIp || n.ip !== options.excludeIp)
+  const excludeSet = new Set<string>();
+  if (options.excludeIp) excludeSet.add(options.excludeIp);
+  if (options.excludeIps) {
+    for (const ip of options.excludeIps) {
+      excludeSet.add(ip);
+    }
+  }
+
+  // 1. Filter residential nodes and exclude requested IPs
+  let residentialNodes = allNodes.filter(
+    (n) => n.ipType === "residential" && !excludeSet.has(n.ip)
   );
 
   if (residentialNodes.length === 0) {
-    return null;
+    return [];
+  }
+
+  // 2. Freshness filter: If we have nodes updated recently (default 3h), prioritize them
+  const maxAge = options.maxAgeMs ?? 3 * 3600 * 1000;
+  const now = Date.now();
+  const freshNodes = residentialNodes.filter(
+    (n) => typeof n.lastUpdated === "number" && n.lastUpdated > now - maxAge
+  );
+  if (freshNodes.length > 0) {
+    residentialNodes = freshNodes;
   }
 
   const pref = (options.preferredCountry || config.preferredCountry || "").toUpperCase();
+  const maxCount = options.maxCount ?? 5;
+
+  const result: VpnNode[] = [];
+  const addedIps = new Set<string>();
+
+  const appendCandidates = (nodes: VpnNode[]) => {
+    const ranked = rankResidentialNodes(nodes);
+    for (const n of ranked) {
+      if (!addedIps.has(n.ip)) {
+        addedIps.add(n.ip);
+        result.push(n);
+        if (result.length >= maxCount) return true;
+      }
+    }
+    return false;
+  };
 
   // Tier 1: Preferred country residential nodes with speed >= 50 Mbps
   if (pref) {
@@ -595,14 +721,16 @@ export function findNextBestResidentialNode(options: {
         n.speed >= MIN_RESIDENTIAL_SPEED_BPS
     );
     if (prefHighSpeed.length > 0) {
-      return rankResidentialNodes(prefHighSpeed)[0];
+      appendCandidates(prefHighSpeed);
+      return result;
     }
   }
 
   // Tier 2: Other countries residential nodes with speed >= 50 Mbps
   const anyHighSpeed = residentialNodes.filter((n) => n.speed >= MIN_RESIDENTIAL_SPEED_BPS);
   if (anyHighSpeed.length > 0) {
-    return rankResidentialNodes(anyHighSpeed)[0];
+    appendCandidates(anyHighSpeed);
+    return result;
   }
 
   // Tier 3: Preferred country residential nodes (if no node >= 50M exists anywhere)
@@ -611,12 +739,24 @@ export function findNextBestResidentialNode(options: {
       (n) => n.countryShort.toUpperCase() === pref || n.countryZh.toUpperCase() === pref
     );
     if (prefAnySpeed.length > 0) {
-      return rankResidentialNodes(prefAnySpeed)[0];
+      appendCandidates(prefAnySpeed);
+      return result;
     }
   }
 
   // Tier 4: Fallback to best available residential node
-  return rankResidentialNodes(residentialNodes)[0];
+  appendCandidates(residentialNodes);
+  return result;
+}
+
+export function findNextBestResidentialNode(options: {
+  preferredCountry?: string;
+  excludeIp?: string;
+  excludeIps?: string[] | Set<string>;
+  allNodes?: VpnNode[];
+}): VpnNode | null {
+  const candidates = findCandidateResidentialNodes(options);
+  return candidates[0] || null;
 }
 
 export const vpnManager = new VpnManager();

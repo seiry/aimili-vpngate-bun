@@ -2,8 +2,8 @@ import fs from "node:fs";
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import { handleRequest } from "../src/routes.ts";
 import { config } from "../src/config.ts";
-import { getAllNodes, saveNodes, saveLastConnected, clearLastConnected, getLastConnectedInfo } from "../src/db.ts";
-import { vpnManager, findNextBestResidentialNode, rankResidentialNodes, MIN_RESIDENTIAL_SPEED_BPS } from "../src/vpn.ts";
+import { getAllNodes, saveNodes, saveLastConnected, clearLastConnected, getLastConnectedInfo, cleanStaleNodes } from "../src/db.ts";
+import { vpnManager, findNextBestResidentialNode, findCandidateResidentialNodes, rankResidentialNodes, MIN_RESIDENTIAL_SPEED_BPS } from "../src/vpn.ts";
 
 beforeAll(() => {
   // Seed a sample SSL-VPN node into database for tests
@@ -658,4 +658,172 @@ test("vpnManager.reconnectFailover selects node with best 60% session / 40% spee
 test("config respects UI_PORT and PROXY_PORT environment variables", () => {
   expect(config.uiPort).toBeGreaterThan(0);
   expect(config.proxyPort).toBeGreaterThan(0);
+});
+
+test("cleanStaleNodes prunes nodes older than threshold", () => {
+  const now = Date.now();
+  saveNodes([
+    {
+      id: "STALE_NODE",
+      hostName: "stale.opengw.net",
+      ip: "198.51.100.222",
+      score: 1000,
+      ping: 20,
+      speed: 100_000_000,
+      speedFormatted: "100 Mbps",
+      countryLong: "Japan",
+      countryShort: "JP",
+      countryZh: "日本",
+      numVpnSessions: 5,
+      uptime: 1000,
+      totalUsers: 10,
+      totalTraffic: 1000,
+      operator: "Test",
+      message: "",
+      hasSslVpn: true,
+      sslVpnPort: 443,
+      sslVpnProto: "tcp",
+      openVpnProto: "tcp",
+      openVpnPort: 443,
+      latencyMs: null,
+      lastUpdated: now - 5 * 3600 * 1000, // 5 hours ago
+      ipType: "residential",
+    },
+    {
+      id: "FRESH_NODE",
+      hostName: "fresh.opengw.net",
+      ip: "198.51.100.223",
+      score: 1000,
+      ping: 20,
+      speed: 100_000_000,
+      speedFormatted: "100 Mbps",
+      countryLong: "Japan",
+      countryShort: "JP",
+      countryZh: "日本",
+      numVpnSessions: 5,
+      uptime: 1000,
+      totalUsers: 10,
+      totalTraffic: 1000,
+      operator: "Test",
+      message: "",
+      hasSslVpn: true,
+      sslVpnPort: 443,
+      sslVpnProto: "tcp",
+      openVpnProto: "tcp",
+      openVpnPort: 443,
+      latencyMs: null,
+      lastUpdated: now, // Fresh
+      ipType: "residential",
+    },
+  ]);
+
+  const deleted = cleanStaleNodes(3 * 3600 * 1000);
+  expect(deleted).toBeGreaterThanOrEqual(1);
+
+  const all = getAllNodes();
+  expect(all.some((n) => n.id === "STALE_NODE")).toBe(false);
+  expect(all.some((n) => n.id === "FRESH_NODE")).toBe(true);
+});
+
+test("findCandidateResidentialNodes prioritizes fresh nodes over stale zombie nodes", () => {
+  const now = Date.now();
+  const staleZombie = {
+    id: "KR_ZOMBIE_NODE",
+    hostName: "zombie.opengw.net",
+    ip: "58.121.4.129",
+    score: 9999999,
+    ping: 10,
+    speed: 999_000_000, // Very high speed
+    speedFormatted: "999 Mbps",
+    countryLong: "Korea Republic of",
+    countryShort: "KR",
+    countryZh: "韩国",
+    numVpnSessions: 1, // Very low sessions
+    uptime: 1000,
+    totalUsers: 10,
+    totalTraffic: 1000,
+    operator: "Test",
+    message: "",
+    hasSslVpn: true,
+    sslVpnPort: 1625,
+    sslVpnProto: "tcp" as const,
+    openVpnProto: "tcp" as const,
+    openVpnPort: 1625,
+    latencyMs: null,
+    lastUpdated: now - 4 * 24 * 3600 * 1000, // 4 days old zombie!
+    ipType: "residential" as const,
+  };
+  const freshActive = {
+    id: "KR_FRESH_NODE",
+    hostName: "fresh.opengw.net",
+    ip: "182.219.73.215",
+    score: 500000,
+    ping: 30,
+    speed: 800_000_000,
+    speedFormatted: "800 Mbps",
+    countryLong: "Korea Republic of",
+    countryShort: "KR",
+    countryZh: "韩国",
+    numVpnSessions: 5,
+    uptime: 1000,
+    totalUsers: 10,
+    totalTraffic: 1000,
+    operator: "Test",
+    message: "",
+    hasSslVpn: true,
+    sslVpnPort: 1892,
+    sslVpnProto: "tcp" as const,
+    openVpnProto: "tcp" as const,
+    openVpnPort: 1892,
+    latencyMs: null,
+    lastUpdated: now, // Updated just now
+    ipType: "residential" as const,
+  };
+
+  const candidates = findCandidateResidentialNodes({
+    preferredCountry: "KR",
+    allNodes: [staleZombie, freshActive],
+    maxAgeMs: 3 * 3600 * 1000,
+  });
+
+  // Fresh active node must be selected, NOT the 4-day-old zombie node
+  expect(candidates.length).toBe(1);
+  expect(candidates[0].ip).toBe("182.219.73.215");
+});
+
+test("disconnect(false) preserves auto-reconnect session in database", async () => {
+  saveLastConnected({
+    id: "TEST_SESSION_NODE",
+    hostName: "sess.opengw.net",
+    ip: "1.2.3.4",
+    score: 100,
+    ping: 10,
+    speed: 100000000,
+    speedFormatted: "100 Mbps",
+    countryLong: "Korea Republic of",
+    countryShort: "KR",
+    countryZh: "韩国",
+    numVpnSessions: 1,
+    uptime: 100,
+    totalUsers: 100,
+    totalTraffic: 1000,
+    operator: "Test",
+    message: "",
+    hasSslVpn: true,
+    sslVpnPort: 443,
+    sslVpnProto: "tcp",
+    openVpnProto: "tcp",
+    openVpnPort: 443,
+    latencyMs: null,
+    lastUpdated: Date.now(),
+  });
+  expect(getLastConnectedInfo().enabled).toBe(true);
+
+  // Non-intentional disconnect (e.g. timeout or watchdog recovery)
+  await vpnManager.disconnect(false);
+  expect(getLastConnectedInfo().enabled).toBe(true);
+
+  // Intentional disconnect clears it
+  await vpnManager.disconnect(true);
+  expect(getLastConnectedInfo().enabled).toBe(false);
 });
